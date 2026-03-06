@@ -1,0 +1,10 @@
+I receive credit card statements from multi banks/cards in my mail box. They are password protected but have simple pattern DDMMYYYY type of birthdate etc. I want to create a system to parse each statement and compile into an excel or some other format for better analysis. How to do this?
+
+0. We need a mapping of bank to which email id they send the statement from. We also need a mapping of passwords of each PDF. Both of these should be stored securely in config json files not to be committed, and can be initialised through a cli tool
+1. Create a Gmail API client which searches for each email pattern, and fetches new statements if any
+2. Download the PDFs of statement neatly into a folder, which should strictly be in .gitignore
+3. Create a common format in which we can convert each PDF into a JSON
+4. Finally give an interface where we can ask common queries. Would be helpful to have a master table with columns like date,bank,card,merchant,amount etc. and also an overall summary of spends on each card per month
+5. Keep a modular architecture, plan to keep code structure in an extensible way
+
+Create PLAN.md with the plan for this project
