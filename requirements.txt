@@ -1,0 +1,5 @@
+# Dependencies only — install in a venv and run with PYTHONPATH=src (see README).
+typer>=0.12
+rich>=13.7
+pydantic>=2.6
+pikepdf>=8.0

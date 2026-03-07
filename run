@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Run ccsa from repo source without reinstalling. Usage: ./run init | ./run imap fetch | etc.
+# Prefers .venv or venv in repo if present (so one `pip install -e .` there is enough).
+set -e
+REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+export PYTHONPATH="${REPO_ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
+if [ -x "${REPO_ROOT}/.venv/bin/python" ]; then
+  exec "${REPO_ROOT}/.venv/bin/python" -m ccsa.cli "$@"
+elif [ -x "${REPO_ROOT}/venv/bin/python" ]; then
+  exec "${REPO_ROOT}/venv/bin/python" -m ccsa.cli "$@"
+else
+  exec python3 -m ccsa.cli "$@"
+fi

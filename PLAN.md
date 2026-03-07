@@ -21,34 +21,26 @@ Build a local-first system that fetches password-protected credit card statement
 ## Architecture
 
 ### Directories (local-first, gitignored)
-- **`.local/`**: credentials + configs + state
-  - `.local/config/app.json`: email rules + password rules + basic settings
-  - `.local/config/secrets.json`: variables used to resolve password templates (e.g. DOB)
-  - `.local/credentials/`: Gmail OAuth client JSON and cached token
-  - `.local/state/`: incremental sync cursor (e.g. last seen Gmail message IDs)
+- **`.local/`**: config and state
+  - `.local/config/card_rules.json`: one entry per bank/card with `from_emails[]` and `passwords[]` (optional fallback: `email_rules.json` + `password_rules.json`)
+  - `.local/config/secrets.json`: **`inboxes`** (each: `email` + `passwords` for IMAP)
+  - `.local/config/app.json`: optional; only for `imap` overrides (host, folder, max_messages_per_rule)
+  - `.local/state/imap_fetched.json`: per-UID sync state (reconciled with disk on each run)
 - **`data/`**:
-  - `data/raw-pdfs/`: downloaded PDFs, organized by bank/card/month
-  - `data/normalized/`: normalized JSON (one JSON per statement, plus optional extracted transactions)
-  - `data/exports/`: CSV/XLSX outputs
+  - `data/raw-pdfs/<bank>/<card>/`: downloaded PDFs (e.g. `2025-01_statement.pdf`)
+  - `data/normalized/`: normalized JSON (future)
+  - `data/exports/`: CSV/XLSX outputs (future)
 
 ### Modules
-- **`ccsa.config`**: load/validate config, template password resolution.
-- **`ccsa.gmail`**:
-  - Gmail OAuth flow
-  - query builder per bank/card rule
-  - download attachments (PDFs) + dedupe
-- **`ccsa.pdf`**:
-  - decrypt PDFs using resolved password
-  - extract text/tables
-- **`ccsa.parsers`** (plugin system):
-  - one parser per bank/card statement format
-  - outputs a common schema (below)
-- **`ccsa.export`**:
-  - build a master table (pandas)
-  - export CSV/XLSX
-- **`ccsa.analyze`**:
-  - monthly spend per card/bank
-  - category/merchant rollups (as available)
+- **`ccsa.config`**: load/validate config, password template resolution, IMAP settings.
+- **`ccsa.imap`**:
+  - IMAP connect, folder selection (All Mail preferred)
+  - per-rule search (FROM / SUBJECT), UID-based skip (state + disk reconciliation)
+  - parallel fetch (5 workers per rule), decrypt on save, state persist
+- **`ccsa.pdf`** (future): decrypt, extract text/tables.
+- **`ccsa.parsers`** (future): plugin per bank/card, common schema.
+- **`ccsa.export`** (future): master table, CSV/XLSX.
+- **`ccsa.analyze`** (future): monthly spend, rollups.
 
 ## Data model (normalized schema)
 
@@ -74,15 +66,13 @@ Build a local-first system that fetches password-protected credit card statement
 
 ## Configuration & security
 
-### `app.json` (local, not committed)
-- **Email rules**: `bank`, optional `card`, `from_email`, optional `subject_contains`, optional extra Gmail query terms.
-- **Password rules**: `bank`, optional `card`, `password_template`.
-  - Templates use `{variable}` placeholders resolved from `secrets.json`.
-  - Example: `{dob_ddmmyyyy}` or `HDFC{pan_last4}`
+### card_rules.json (local, not committed)
+- One object per bank/card: **`bank`**, **`card`**, **`from_emails`** (list), **`passwords`** (list; first used for PDF decryption).
+- Optional: `subject_contains`, `file_suffix`.
+- Fallback: if `card_rules.json` is missing, ccsa can load `email_rules.json` + `password_rules.json`.
 
-### `secrets.json` (local, not committed)
-- `variables`: key/value used for password templates.
-- No passwords should be hardcoded into committed code.
+### secrets.json (local, not committed)
+- **`inboxes`**: list of `{ email, passwords }` for IMAP (e.g. Gmail app password — see docs). PDF passwords are set per card in **card_rules.json**.
 
 ## CLI design (user workflows)
 
@@ -91,20 +81,18 @@ Build a local-first system that fetches password-protected credit card statement
   - create `.local/` and `data/` structure
   - create config templates with examples
 
-### Fetch statements from Gmail
-- `ccsa gmail auth` (one-time): perform OAuth and store token under `.local/credentials/`
-- `ccsa gmail fetch`
-  - for each email rule:
-    - run Gmail query (`from:... subject:... newer_than:...` etc.)
-    - download PDF attachments
-    - store into `data/raw-pdfs/<bank>/<card>/<YYYY-MM>/...pdf`
-  - dedupe using Gmail message id + attachment id stored in `.local/state/`
+### Fetch statements (IMAP)
+- **`ccsa imap fetch`**
+  - Reads **`card_rules.json`** (or fallback `email_rules.json` + `password_rules.json`); each card rule expands to one IMAP search per `from_email`
+  - State in `.local/state/imap_fetched.json` keyed by **message UID**
+  - On each run: reconcile state with disk (drop UIDs whose file is missing), then skip UIDs already in state
+  - Fetch new messages with **5 parallel workers** per rule; decrypt and save PDFs under `data/raw-pdfs/<bank>/<card>/`
+  - Safe to rerun; interrupted runs can be retried
 
 ### Normalize PDFs
 - `ccsa pdf normalize`
   - for each raw PDF:
     - find matching password rule (bank/card)
-    - resolve template using `secrets.json`
     - decrypt if needed
     - select parser plugin by (bank/card + heuristics)
     - write normalized statement JSON to `data/normalized/`
@@ -122,12 +110,13 @@ Build a local-first system that fetches password-protected credit card statement
 - `.gitignore` includes `.local/` and `data/`
 
 ### Milestone 1: Local config initialization
-- `ccsa init` writes template `app.json` and `secrets.json`
+- `ccsa init` creates `.local/` and `data/`; writes template **`card_rules.json`** and **`secrets.json`** when missing
 
-### Milestone 2: Gmail integration
-- OAuth client read from `.local/credentials/gmail_oauth_client.json`
-- token caching in `.local/credentials/`
-- download PDFs + maintain sync state
+### Milestone 2: IMAP fetch (done)
+- IMAP connect (Gmail App Password or other provider)
+- Search by FROM/SUBJECT per rule, UID-based skip
+- State reconciled with data directory; parallel fetch (5 workers per rule)
+- Decrypt on save; reunlock previously locked PDFs from state
 
 ### Milestone 3: PDF handling + plugin parser interface
 - decrypt PDFs robustly
@@ -139,7 +128,6 @@ Build a local-first system that fetches password-protected credit card statement
 - monthly spend per card/bank
 
 ## Extensibility checklist (adding a new bank/card)
-- add an `email_rule` in `app.json`
-- add a `password_rule` in `app.json`
-- implement a new parser module under `ccsa.parsers`
-- run fetch → normalize → export
+- Add an entry in **`card_rules.json`**: `bank`, `card`, `from_emails`, `passwords` (and optional `subject_contains`, `file_suffix`).
+- Run **`ccsa imap fetch`**; PDFs appear under `data/raw-pdfs/<bank>/<card>/`.
+- (Future) Implement a parser under `ccsa.parsers` for normalize/export.
