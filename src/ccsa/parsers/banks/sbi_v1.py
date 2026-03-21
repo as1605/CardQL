@@ -91,6 +91,15 @@ def _parse_transaction_line(
     )
 
 
+# SBI PDF text order is not always: header then rows. Payment credits often appear
+# *above* "TRANSACTIONS FOR ...", and some debits appear *below* "SHOP & SMILE SUMMARY".
+_TXN_LINE_RE = re.compile(
+    r"^\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2}\s+"
+    r".+\s+[\d,]+\.\d+\s+[DCM]$",
+    re.I,
+)
+
+
 def parse(
     text: str,
     source_pdf_path: Optional[Union[str, Path]] = None,
@@ -99,21 +108,18 @@ def parse(
 ) -> Statement:
     start, end = _extract_statement_period(text)
     transactions: list[Transaction] = []
-    in_section = False
+    seen_lines: set[str] = set()
     for raw_line in text.splitlines():
         line = raw_line.strip()
-        if "TRANSACTIONS FOR " in line.upper() or "Transaction Details" in line:
-            in_section = True
+        if not line or not _TXN_LINE_RE.match(line):
             continue
-        if "SHOP & SMILE" in line or "Reward Point" in line:
-            in_section = False
+        if line in seen_lines:
             continue
-        if not in_section or not line:
-            continue
-        if re.match(r"^\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2}\s+.+\s+[\d,]+\.\d+\s+[DCM]$", line, re.I):
-            txn = _parse_transaction_line(line, bank=bank, card=card)
-            if txn is not None:
-                transactions.append(txn)
+        seen_lines.add(line)
+        txn = _parse_transaction_line(line, bank=bank, card=card)
+        if txn is not None:
+            transactions.append(txn)
+    transactions.sort(key=lambda t: (t.date, t.description))
     return Statement(
         statement_period_start=start,
         statement_period_end=end,

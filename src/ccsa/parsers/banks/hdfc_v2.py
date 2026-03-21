@@ -47,10 +47,13 @@ def _dd_mon_yyyy_to_iso(s: str) -> Optional[str]:
         return None
 
 
-# Transaction line: 15/07/2025| 00:00 DESCRIPTION  C 19.80 l  or  ... +  C 16,099.00 l
-_V2_LINE = re.compile(
-    r"^(\d{2}/\d{2}/\d{4})\|\s*\d{1,2}:\d{2}\s+(.+)\s+(\+\s*)?C\s*([\d,]+\.?\d*)\s*l\s*$"
-)
+# Line shape: 15/07/2025| 00:00 DESCRIPTION ... C 19.80 l  (debit)
+# Credits: ... +  C 16,099.00 l  (payment / refund — must match + C before amount)
+# Do not use a single greedy ".+ ... ?C" — "CREDIT CARD ... +  C amount l" would
+# otherwise match the last " C amount" only and drop the "+", mis-classifying as debit.
+_V2_LINE_PREFIX = re.compile(r"^(\d{2}/\d{2}/\d{4})\|\s*\d{1,2}:\d{2}\s+(.+)$")
+_V2_CREDIT_TAIL = re.compile(r"^(.+)\s+\+\s+C\s+([\d,]+\.?\d*)\s+l\s*$")
+_V2_DEBIT_TAIL = re.compile(r"^(.+)\s+C\s+([\d,]+\.?\d*)\s+l\s*$")
 
 
 def _parse_v2_line(
@@ -58,18 +61,26 @@ def _parse_v2_line(
     bank: str = "HDFC",
     card: str = "Diners Privilege",
 ) -> Optional[Transaction]:
-    m = _V2_LINE.match(line.strip())
+    line = line.strip()
+    m0 = _V2_LINE_PREFIX.match(line)
+    if not m0:
+        return None
+    date_str, rest = m0.group(1), m0.group(2)
+    m = _V2_CREDIT_TAIL.match(rest)
+    is_credit = True
+    if not m:
+        m = _V2_DEBIT_TAIL.match(rest)
+        is_credit = False
     if not m:
         return None
-    date_str, description, credit_marker, amount_str = m.group(1), m.group(2), m.group(3), m.group(4)
-    description = description.strip()
+    description, amount_str = m.group(1).strip(), m.group(2)
     if len(description) > 500:
         return None
     try:
         amount_val = float(amount_str.replace(",", ""))
     except ValueError:
         return None
-    if credit_marker:
+    if is_credit:
         amount_val = -amount_val
     return Transaction(
         date=_ddmmyyyy_to_iso(date_str),
@@ -79,8 +90,8 @@ def _parse_v2_line(
         amount=amount_val,
         currency="INR",
         category=None,
-        transaction_type="refund" if credit_marker else "purchase",
-        raw={"hdfc_v2_line": line.strip()},
+        transaction_type="refund" if is_credit else "purchase",
+        raw={"hdfc_v2_line": line},
     )
 
 
@@ -124,10 +135,9 @@ def parse(
             continue
         if not in_section or not line:
             continue
-        if _V2_LINE.match(line):
-            txn = _parse_v2_line(line, bank=bank, card=card)
-            if txn is not None:
-                transactions.append(txn)
+        txn = _parse_v2_line(line, bank=bank, card=card)
+        if txn is not None:
+            transactions.append(txn)
 
     return Statement(
         statement_period_start=start,

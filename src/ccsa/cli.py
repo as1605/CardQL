@@ -7,7 +7,7 @@ import re
 import typer
 from rich.console import Console
 
-from .config import ensure_local_dirs, load_config, resolve_password, write_config_templates
+from .config import compute_tags, ensure_local_dirs, load_config, resolve_password, write_config_templates
 from .paths import get_paths
 from .imap import fetch_pdfs, _unlock_pdf
 from . import pdf as pdf_module
@@ -159,11 +159,12 @@ def _run_pipeline(
     import csv
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["date", "bank", "card", "description", "amount", "currency", "category", "transaction_type", "source"])
+        writer.writerow(["date", "bank", "card", "description", "amount", "currency", "category", "transaction_type", "tags", "source"])
         for t, src in all_txns:
+            tags = compute_tags(t.description, loaded.tags)
             writer.writerow([
                 t.date, t.bank, t.card, t.description, t.amount, t.currency,
-                t.category or "", t.transaction_type or "", src,
+                t.category or "", t.transaction_type or "", tags, src,
             ])
     console.print(f"[green]All {len(all_txns)} transactions exported to {out_path}[/green]")
 
@@ -410,6 +411,7 @@ def export_master(
     """Merge all normalized statements into a single CSV. Parses PDFs if no normalized data exists."""
     paths = get_paths()
     ensure_local_dirs(paths)
+    loaded = load_config(paths)
     all_txns = []
     json_files = list(paths.normalized_dir.rglob("*.json"))
     if json_files:
@@ -424,7 +426,6 @@ def export_master(
     if not all_txns:
         # Parse PDFs on the fly and merge
         console.print("[dim]No normalized JSON; parsing PDFs...[/dim]")
-        loaded = load_config(paths)
         skip_substrings = ["terms", "conditions", "most-important", "tariff", "mitc"]
         for p in paths.raw_pdfs_dir.rglob("*.pdf"):
             if any(s in p.stem.lower() for s in skip_substrings):
@@ -468,8 +469,9 @@ def export_master(
     import csv
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["date", "bank", "card", "description", "amount", "currency", "category", "transaction_type", "source"])
+        writer.writerow(["date", "bank", "card", "description", "amount", "currency", "category", "transaction_type", "tags", "source"])
         for t, source in all_txns:
+            tags = compute_tags(t.description, loaded.tags)
             writer.writerow([
                 t.date,
                 t.bank,
@@ -479,6 +481,7 @@ def export_master(
                 t.currency,
                 t.category or "",
                 t.transaction_type or "",
+                tags,
                 source,
             ])
     full_path = out_path.resolve()

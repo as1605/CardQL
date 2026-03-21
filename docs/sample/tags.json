@@ -1,0 +1,77 @@
+[
+  {
+    "tag_name": "MOBILITY",
+    "regex_patterns": ["uber"]
+  },
+  {
+    "tag_name": "FOOD_DELIVERY",
+    "regex_patterns": [
+      "zomato",
+      "^ETERNAL LIMITEDGURGAON",
+      "BLINKIT",
+      "BLINK COMMERCE",
+      "swiggy",
+      "ZEPTO",
+      "COMMODUM"
+    ]
+  },
+  {
+    "tag_name": "ECOMMERCE",
+    "regex_patterns": [
+      "amazon",
+      "FLIPKART",
+      "MYNTRA",
+      "SAVANA",
+      "ENVOGUE STYLES",
+      "AJIO",
+      "NEWME",
+      "FRAICHEUR"
+    ]
+  },
+  {
+    "tag_name": "TRAVEL",
+    "regex_patterns": [
+      "INDIGO",
+      "MAKEMYTRIP",
+      "CLEARTRIP",
+      "YATRA",
+      "EASE MY TRIP",
+      "Easy Trip Planner",
+      "HAPPYFARES",
+      "REDBUS",
+      "HSBCIN TWP FLIGHT",
+      "HOPPER *TRAVEL"
+    ]
+  },
+  {
+    "tag_name": "HEALTH_AND_FITNESS",
+    "regex_patterns": [
+      "HEALTHKART",
+      "Bright Lifecare",
+      "APOLLO ?PHARMA",
+      "TATA 1MG HEALTHCARE",
+      "CURE FIT"
+    ]
+  },
+  {
+    "tag_name": "DINING_ENTERTAINMENT",
+    "regex_patterns": ["^EAZYDINER", "^BOOK ?MY ?SHOW.*MUMBAI"]
+  },
+  {
+    "tag_name": "PAYMENTS_AND_FEES",
+    "regex_patterns": [
+      "^BBPS PAYMENT",
+      "^AUTOPAY THANK YOU",
+      "^PAYMENT RECEIVED [A-Z0-9]{23}$",
+      "^CREDIT CARD PAYMENTNet Banking \\(Ref# \\d{23}\\)$",
+      "^CC PAYMENT \\d{12} PayZapp \\(Ref# \\d{23}\\)$",
+      "^TELE TRANSFER CREDIT \\(Ref# ST\\d{21}\\)$",
+      "^NETBANKING TRANSFER \\(Ref# \\d{23}\\)$",
+      "^DIRECT DEBIT PAYMENT\\(ACH\\)$",
+      "^UPI\/",
+      " EMI",
+      "EMI ",
+      "^IGST"
+    ]
+  }
+]

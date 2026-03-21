@@ -1,0 +1,36 @@
+[
+  {
+    "bank": "HDFC",
+    "from_emails": [
+      "Emailstatements.cards@hdfcbank.net",
+      "emailstatements.cc@hdfcbank.net"
+    ]
+  },
+  {
+    "bank": "SBI",
+    "from_emails": ["ELITE.card@sbicard.com"]
+  },
+  {
+    "bank": "SBI",
+    "from_emails": ["Statements@sbicard.com"]
+  },
+  {
+    "bank": "ICICI",
+    "from_emails": ["credit_cards@icicibank.com"]
+  },
+  {
+    "bank": "IndusInd",
+    "from_emails": ["creditcard.estatements@indusind.com"]
+  },
+  {
+    "bank": "Axis",
+    "from_emails": [
+      "cc.statements@axis.bank.in",
+      "cc.statements@axisbank.com"
+    ]
+  },
+  {
+    "bank": "HSBC",
+    "from_emails": ["creditcardstatement@mail.hsbc.co.in"]
+  }
+]
