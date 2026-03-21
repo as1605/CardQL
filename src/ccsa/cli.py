@@ -1,33 +1,143 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+import os
 import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.logging import RichHandler
+from rich.markup import escape as rich_escape
+from rich.syntax import Syntax
+from rich.table import Table
 
 from .config import compute_tags, ensure_local_dirs, load_config, resolve_password, write_config_templates
 from .paths import get_paths
 from .imap import fetch_pdfs, _unlock_pdf
 from . import pdf as pdf_module
 from .parsers import get_parser, get_parsers_for_bank, try_parse_with_bank
-from .parsers.schema import Statement
+from .parsers.schema import Statement, Transaction
+from .sqlite_export import import_master_csv_to_sqlite
 
 app = typer.Typer(help="Credit card statement analyzer CLI.")
 console = Console()
 
 
+def _open_file_default_app(path: Path) -> None:
+    """Open a file with the OS default handler (same as double-click / ``open`` on macOS)."""
+    path = Path(path).resolve()
+    if not path.is_file():
+        console.print(f"[yellow]Skip open: not a file: {path}[/yellow]")
+        return
+    try:
+        if sys.platform == "darwin":
+            subprocess.run(["open", str(path)], check=False)
+        elif sys.platform == "win32":
+            os.startfile(str(path))  # type: ignore[attr-defined]
+        else:
+            subprocess.run(["xdg-open", str(path)], check=False)
+    except OSError as e:
+        console.print(f"[yellow]Could not open {path}: {e}[/yellow]")
+
+
+# Run via sqlite3 -cmd before the REPL (one -cmd per statement / dot-command).
+_SQLITE3_STARTUP_CMDS: tuple[str, ...] = (
+    ".headers on",
+    ".mode table",
+    "SELECT date,bank,card,description,amount,tags FROM transactions LIMIT 10;",
+)
+
+
+def _print_sqlite3_startup_plan() -> None:
+    """Tell the user what sqlite3 will run internally (``-cmd``), especially the SQL."""
+    console.print(
+        "[bold]sqlite3[/bold] [dim]will run these first[/] [dim](inside sqlite3, not your shell):[/]"
+    )
+    for cmd in _SQLITE3_STARTUP_CMDS:
+        stripped = cmd.lstrip()
+        if stripped.upper().startswith("SELECT"):
+            console.print(Syntax(cmd.rstrip(), "sql", word_wrap=True))
+        else:
+            console.print(f"  [dim]{cmd}[/dim]")
+    console.print()
+
+
+def _launch_sqlite3_repl(db_path: Path) -> None:
+    """Run interactive ``sqlite3`` in this terminal (inherits stdin/stdout).
+
+    Executes a short preview query (first 10 rows) before handing over to the REPL.
+    """
+    db_path = Path(db_path).resolve()
+    if not db_path.is_file():
+        console.print(f"[yellow]No database at {db_path}; skipping sqlite3[/yellow]")
+        return
+    sqlite3_exe = shutil.which("sqlite3")
+    if not sqlite3_exe:
+        console.print("[yellow]sqlite3 not found in PATH; skipping interactive shell[/yellow]")
+        return
+    console.print(f"[dim]Database[/dim]  [bold]{db_path}[/bold]")
+    _print_sqlite3_startup_plan()
+    console.print("[dim]Output from sqlite3 follows, then the interactive prompt. Type .quit to exit.[/dim]")
+    argv: list[str] = [sqlite3_exe]
+    for cmd in _SQLITE3_STARTUP_CMDS:
+        argv.extend(("-cmd", cmd))
+    argv.append(str(db_path))
+    subprocess.run(
+        argv,
+        stdin=sys.stdin,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        check=False,
+    )
+
+
+def _post_export_open_tools(csv_path: Path, db_path: Path | None = None) -> None:
+    """Open ``master.csv`` with default app, then ``sqlite3`` on the DB in this shell."""
+    csv_path = Path(csv_path).resolve()
+    db = Path(db_path).resolve() if db_path else (csv_path.parent / "transactions.sqlite")
+    _open_file_default_app(csv_path)
+    _launch_sqlite3_repl(db)
+
+
+def _sync_sqlite_from_master_csv(csv_path: Path) -> None:
+    """Write ``transactions.sqlite`` next to ``master.csv`` (replaces table each run)."""
+    csv_path = Path(csv_path).resolve()
+    db_path = csv_path.parent / "transactions.sqlite"
+    try:
+        n = import_master_csv_to_sqlite(csv_path, db_path)
+        console.print(f"[green]SQLite:[/green] {n} rows → {db_path}")
+    except FileNotFoundError as e:
+        console.print(f"[yellow]{e}[/yellow]")
+    except OSError as e:
+        console.print(f"[yellow]SQLite export failed: {e}[/yellow]")
+
+
 def _configure_logging() -> None:
     """Configure ccsa logger; use env CCSA_LOG=DEBUG for verbose output."""
-    level_name = __import__("os").environ.get("CCSA_LOG", "INFO").upper()
+    level_name = os.environ.get("CCSA_LOG", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
     log = logging.getLogger("ccsa")
     log.setLevel(level)
     if not log.handlers:
-        h = logging.StreamHandler()
+        h = RichHandler(
+            console=console,
+            show_time=True,
+            omit_repeated_times=True,
+            show_path=False,
+            show_level=True,
+            markup=True,
+            rich_tracebacks=True,
+            log_time_format="[%H:%M:%S]",
+        )
         h.setLevel(level)
         log.addHandler(h)
+    else:
+        for h in log.handlers:
+            h.setLevel(level)
     log.propagate = False
 
 
@@ -65,16 +175,25 @@ def _months_in_range(start_ym: str, end_ym: str) -> list[str]:
 
 
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context) -> None:
+def main(
+    ctx: typer.Context,
+    open_after: bool = typer.Option(
+        False,
+        "--open",
+        "-O",
+        help="After export: open master.csv with default app, then sqlite3 REPL in this terminal",
+    ),
+) -> None:
     """Fetch statements, normalize transactions, and export for analysis. Run full pipeline when no subcommand given."""
     if ctx.invoked_subcommand is not None:
         return
-    _run_pipeline()
+    _run_pipeline(open_after_export=open_after)
 
 
 def _run_pipeline(
     force_normalize: bool = False,
     output_csv: Path | None = None,
+    open_after_export: bool = False,
 ) -> None:
     """Full pipeline: setup, fetch, normalize, export. Re-runnable and self-healing."""
     _configure_logging()
@@ -138,13 +257,12 @@ def _run_pipeline(
     else:
         console.print("[dim]Normalize: nothing new to parse[/dim]")
 
-    all_txns: list[tuple] = []
+    all_txns: list[Transaction] = []
     for jf in paths.normalized_dir.rglob("*.json"):
         try:
             st = Statement.model_validate_json(jf.read_text(encoding="utf-8"))
-            src = st.source_pdf_path or str(jf)
             for t in st.transactions:
-                all_txns.append((t, src))
+                all_txns.append(t)
         except Exception as e:
             console.print(f"[yellow]Skip JSON {jf.name}: {e}[/yellow]")
 
@@ -152,30 +270,39 @@ def _run_pipeline(
         console.print("[yellow]No transactions to export. Add PDFs or check card_rules.json.[/yellow]")
         return
 
-    all_txns.sort(key=lambda x: (x[0].date, x[0].bank, x[0].card))
+    all_txns.sort(key=lambda t: (t.date, t.bank, t.card))
     out_path = output_csv or (paths.exports_dir / "master.csv")
     out_path = Path(out_path).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     import csv
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["date", "bank", "card", "description", "amount", "currency", "category", "transaction_type", "tags", "source"])
-        for t, src in all_txns:
+        writer.writerow(["date", "bank", "card", "description", "amount", "currency", "category", "transaction_type", "tags"])
+        for t in all_txns:
             tags = compute_tags(t.description, loaded.tags)
             writer.writerow([
                 t.date, t.bank, t.card, t.description, t.amount, t.currency,
-                t.category or "", t.transaction_type or "", tags, src,
+                t.category or "", t.transaction_type or "", tags,
             ])
     console.print(f"[green]All {len(all_txns)} transactions exported to {out_path}[/green]")
+    _sync_sqlite_from_master_csv(out_path)
+    if open_after_export:
+        _post_export_open_tools(out_path)
 
 
 @app.command()
 def run(
     force: bool = typer.Option(False, "--force", "-f", help="Re-normalize all PDFs even if JSON exists"),
     output: Path | None = typer.Option(None, "--output", "-o", help="Master CSV path (default: data/exports/master.csv)"),
+    open_after: bool = typer.Option(
+        False,
+        "--open",
+        "-O",
+        help="After export: open master.csv with default app, then sqlite3 REPL in this terminal",
+    ),
 ) -> None:
     """Run full pipeline: setup, fetch, normalize, export. Re-runnable and self-healing."""
-    _run_pipeline(force_normalize=force, output_csv=output)
+    _run_pipeline(force_normalize=force, output_csv=output, open_after_export=open_after)
 
 
 @app.command()
@@ -207,21 +334,42 @@ def imap_fetch() -> None:
         raise SystemExit(1)
     try:
         result = fetch_pdfs(paths)
+        console.print()
         if result.folder:
-            console.print(f"[dim]Folder: {result.folder}[/dim]")
+            console.print(f"[dim]Folder[/dim]  [bold]{rich_escape(result.folder)}[/bold]")
         if result.reunlocked:
-            console.print(f"[cyan]Reunlocked {result.reunlocked} previously locked PDF(s).[/cyan]")
-        console.print(
-            f"[green]Downloaded {result.downloaded} new PDF(s).[/green] "
-            f"Skipped {result.skipped} already-fetched."
-        )
-        for s in result.rule_summaries:
             console.print(
-                f"  {s.bank}/{s.card}: found {s.found}, skipped {s.skipped}, downloaded {s.downloaded}"
-                + (f", reunlocked {s.reunlocked}" if s.reunlocked else "")
+                f"[cyan]Reunlocked[/cyan] [bold]{result.reunlocked}[/bold] "
+                "[dim]previously locked PDF(s)[/dim]"
             )
-        for p in result.saved_paths:
-            console.print(f"  [dim]{p}[/dim]")
+        console.print(
+            f"[bold green]Downloaded[/bold green] [bold]{result.downloaded}[/bold] "
+            f"[dim]new PDF(s) ·[/dim] [yellow]{result.skipped}[/yellow] [dim]already in state[/dim]"
+        )
+        if result.rule_summaries:
+            tbl = Table(
+                title="[bold]Per rule[/bold]",
+                show_header=True,
+                header_style="bold cyan",
+                border_style="dim",
+                pad_edge=False,
+            )
+            tbl.add_column("Bank / card", style="cyan", no_wrap=True)
+            tbl.add_column("Found", justify="right", style="white")
+            tbl.add_column("Skip", justify="right", style="yellow")
+            tbl.add_column("New", justify="right", style="green")
+            for s in result.rule_summaries:
+                tbl.add_row(
+                    rich_escape(f"{s.bank} / {s.card}"),
+                    str(s.found),
+                    str(s.skipped),
+                    str(s.downloaded),
+                )
+            console.print(tbl)
+        if result.saved_paths:
+            console.print("[dim]Saved paths[/dim]")
+            for p in result.saved_paths:
+                console.print(f"  [dim]•[/dim] {rich_escape(p)}")
     except Exception as e:
         console.print(f"[red]{e}[/red]")
         raise SystemExit(1)
@@ -407,20 +555,25 @@ app.add_typer(export_app, name="export")
 def export_master(
     format: str = typer.Option("csv", "--format", "-f", help="Output format: csv"),
     output: Path | None = typer.Option(None, "--output", "-o", help="Output file (default: data/exports/master.csv)"),
+    open_after: bool = typer.Option(
+        False,
+        "--open",
+        "-O",
+        help="After export: open master.csv with default app, then sqlite3 REPL in this terminal",
+    ),
 ) -> None:
     """Merge all normalized statements into a single CSV. Parses PDFs if no normalized data exists."""
     paths = get_paths()
     ensure_local_dirs(paths)
     loaded = load_config(paths)
-    all_txns = []
+    all_txns: list[Transaction] = []
     json_files = list(paths.normalized_dir.rglob("*.json"))
     if json_files:
         for jf in json_files:
             try:
                 st = Statement.model_validate_json(jf.read_text(encoding="utf-8"))
-                source = st.source_pdf_path or str(jf)
                 for t in st.transactions:
-                    all_txns.append((t, source))
+                    all_txns.append(t)
             except Exception as e:
                 console.print(f"[red]{jf}: {e}[/red]")
     if not all_txns:
@@ -454,23 +607,22 @@ def export_master(
                 )
                 if statement is None:
                     continue
-                source = statement.source_pdf_path or str(p)
                 for t in statement.transactions:
-                    all_txns.append((t, source))
+                    all_txns.append(t)
             except Exception as e:
                 console.print(f"[red]{p}: {e}[/red]")
     if not all_txns:
         console.print("[yellow]No transactions found. Add PDFs to data/raw-pdfs/<bank>/<card>/ or run 'ccsa pdf normalize'.[/yellow]")
         raise SystemExit(1)
-    all_txns.sort(key=lambda x: (x[0].date, x[0].bank, x[0].card))
+    all_txns.sort(key=lambda t: (t.date, t.bank, t.card))
     out_path = output or (paths.exports_dir / "master.csv")
     out_path = Path(out_path).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     import csv
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["date", "bank", "card", "description", "amount", "currency", "category", "transaction_type", "tags", "source"])
-        for t, source in all_txns:
+        writer.writerow(["date", "bank", "card", "description", "amount", "currency", "category", "transaction_type", "tags"])
+        for t in all_txns:
             tags = compute_tags(t.description, loaded.tags)
             writer.writerow([
                 t.date,
@@ -482,10 +634,48 @@ def export_master(
                 t.category or "",
                 t.transaction_type or "",
                 tags,
-                source,
             ])
     full_path = out_path.resolve()
     console.print(f"[green]All {len(all_txns)} transactions exported to {full_path}[/green]")
+    _sync_sqlite_from_master_csv(out_path)
+    if open_after:
+        _post_export_open_tools(out_path)
+
+
+@export_app.command("sqlite")
+def export_sqlite(
+    csv_path: Path | None = typer.Option(
+        None,
+        "--csv",
+        "-c",
+        help="Source master.csv (default: data/exports/master.csv)",
+    ),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="SQLite file (default: data/exports/transactions.sqlite)",
+    ),
+    open_after: bool = typer.Option(
+        False,
+        "--open",
+        "-O",
+        help="Open master.csv with default app, then sqlite3 REPL in this terminal",
+    ),
+) -> None:
+    """Load master.csv into transactions.sqlite (replaces existing table)."""
+    paths = get_paths()
+    ensure_local_dirs(paths)
+    csv_p = Path(csv_path or (paths.exports_dir / "master.csv")).resolve()
+    db_p = Path(output or (csv_p.parent / "transactions.sqlite")).resolve()
+    try:
+        n = import_master_csv_to_sqlite(csv_p, db_p)
+        console.print(f"[green]{n} rows written to {db_p}[/green]")
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/red]")
+        raise SystemExit(1)
+    if open_after:
+        _post_export_open_tools(csv_p, db_p)
 
 
 if __name__ == "__main__":

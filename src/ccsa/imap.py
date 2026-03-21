@@ -15,6 +15,7 @@ from pathlib import Path
 from threading import Lock
 
 import pikepdf
+from rich.markup import escape
 
 from .config import (
     BankEmailRule,
@@ -30,6 +31,11 @@ from .paths import Paths, get_paths
 log = logging.getLogger("ccsa.imap")
 
 STATE_FILE = "imap_fetched.json"
+
+
+def _rule_tag(tag: str) -> str:
+    """Rich markup for ``bank/card`` label; escape so IMAP text cannot break markup."""
+    return f"[bold cyan]{escape(tag)}[/bold cyan]"
 FETCH_WORKERS = 5
 
 
@@ -84,7 +90,7 @@ def _load_state(paths: Paths) -> dict[str, DownloadRecord]:
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
     except Exception as e:
-        log.warning("Could not read state file: %s", e)
+        log.warning("[yellow]Could not read state file:[/yellow] %s", escape(str(e)))
         return {}
 
     # Support old format {"downloaded": [...]} and new format {"records": [...]}
@@ -139,7 +145,10 @@ def _reconcile_state_with_disk(
         del state[uid]
 
     if removed:
-        log.info("Reconciled state with disk: removed %d stale record(s)", removed)
+        log.info(
+            "[dim]Reconciled state with disk:[/] removed [bold yellow]%d[/] stale record(s)",
+            removed,
+        )
         _save_state(paths, state)
 
     return removed
@@ -325,7 +334,7 @@ def _reunlock_from_state(
                 fetched_at=record.fetched_at, unlocked=True,
             )
             count += 1
-            log.info("Reunlocked: %s", p.name)
+            log.info("[green]Reunlocked[/green] [bold]%s[/bold]", escape(p.name))
     if count:
         _save_state(paths, state)
     return count
@@ -444,10 +453,10 @@ def _fetch_rule(
         parts.append(f'SUBJECT "{rule.subject_contains}"')
     search_str = " ".join(parts)
 
-    log.info("[%s] Searching: %s", tag, search_str)
+    log.info("%s [dim]Search[/] %s", _rule_tag(tag), escape(search_str))
     typ, data = imap.uid("SEARCH", None, search_str)
     if typ != "OK":
-        log.warning("[%s] Search failed", tag)
+        log.warning("%s [red]Search failed[/]", _rule_tag(tag))
         return RuleSummary(bank=rule.bank, card=rule.card or "default", found=0, skipped=0, downloaded=0)
 
     all_uid_bytes: list[bytes] = (data[0] or b"").split()
@@ -458,7 +467,14 @@ def _fetch_rule(
     new_uid_bytes = [u for u in all_uid_bytes if u.decode("utf-8", errors="ignore").strip() not in known]
     skipped = len(all_uid_bytes) - len(new_uid_bytes)
 
-    log.info("[%s] Found %d — %d already fetched, %d new", tag, len(all_uid_bytes), skipped, len(new_uid_bytes))
+    log.info(
+        "%s [dim]Found[/] [bold]%d[/] [dim]—[/] [yellow]%d[/] [dim]already fetched[/], "
+        "[green]%d[/] [dim]new[/]",
+        _rule_tag(tag),
+        len(all_uid_bytes),
+        skipped,
+        len(new_uid_bytes),
+    )
 
     downloaded = 0
     state_lock = Lock()
@@ -476,10 +492,20 @@ def _fetch_rule(
                     downloaded += 1
                 _save_state(paths, state)
         except Exception as e:
-            log.warning("[%s] uid %s: %s", tag, getattr(fut, "_uid", ""), e)
+            log.warning(
+                "%s [red]uid %s:[/] %s",
+                _rule_tag(tag),
+                escape(str(getattr(fut, "_uid", ""))),
+                escape(str(e)),
+            )
 
     with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as executor:
-        log.info("[%s] Fetching %d message(s) with %d workers", tag, len(new_uid_bytes), FETCH_WORKERS)
+        log.info(
+            "%s [bold]Fetching[/] [yellow]%d[/] [dim]message(s) with[/] [dim]%d[/] [dim]workers[/]",
+            _rule_tag(tag),
+            len(new_uid_bytes),
+            FETCH_WORKERS,
+        )
         futures = []
         for uid_bytes in new_uid_bytes:
             uid = uid_bytes.decode("utf-8", errors="ignore").strip()
@@ -517,15 +543,22 @@ def fetch_pdfs(paths: Paths | None = None) -> FetchResult:
     state = _load_state(paths)
     _reconcile_state_with_disk(paths, state)
     known = _known_uids(state)
-    log.info("State: %d record(s), %d UIDs to skip", len(state), len(known))
+    log.info(
+        "[dim]State:[/] [bold]%d[/] [dim]record(s),[/] [bold]%d[/] [dim]UIDs to skip[/]",
+        len(state),
+        len(known),
+    )
 
     # Attempt to unlock any PDFs that were saved locked in previous runs
     reunlocked = _reunlock_from_state(state, loaded, paths)
     if reunlocked:
-        log.info("Reunlocked %d PDF(s) from previous runs", reunlocked)
+        log.info(
+            "[cyan]Reunlocked[/cyan] [bold]%d[/] [dim]PDF(s) from previous runs[/]",
+            reunlocked,
+        )
 
     imap = connect(loaded)
-    log.info("Connected to %s", loaded.config.imap.host)
+    log.info("[green]Connected[/green] to [bold]%s[/]", escape(loaded.config.imap.host))
 
     total_downloaded = 0
     total_skipped = 0
@@ -535,7 +568,7 @@ def fetch_pdfs(paths: Paths | None = None) -> FetchResult:
 
     try:
         folder = _select_folder(imap, loaded.config.imap.folder)
-        log.info("Folder: %s", folder)
+        log.info("[dim]Folder[/dim]  [bold]%s[/]", escape(folder))
 
         for rule in loaded.config.email_rules:
             summary = _fetch_rule(imap, rule, paths, loaded, state, known, saved_paths, folder)

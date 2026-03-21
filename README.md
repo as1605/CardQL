@@ -15,7 +15,7 @@ python3 -m venv .venv
 .venv/bin/python -m ccsa
 ```
 
-Or explicitly: `ccsa run` (same as above). Optional: `ccsa run --force` to re-normalize all PDFs; `ccsa run -o path/to/master.csv` to set the output path.
+Or explicitly: `ccsa run` (same as above). Optional: `ccsa run --force` to re-normalize all PDFs; `ccsa run -o path/to/master.csv` to set the output path. After a successful export, **`--open` / `-O`** opens **`master.csv`** with your OS default app (e.g. Excel/Numbers) and then starts an interactive **`sqlite3`** session on **`transactions.sqlite`** in the **same** terminal (it prints the exact **SQL** and **`.headers` / `.mode`** it will run, then **`sqlite3`** executes that preview and stays interactive) (macOS: `open`; Linux: `xdg-open`; Windows: default handler). Works on **`ccsa`**, **`ccsa run`**, **`ccsa export master`**, and **`ccsa export sqlite`**.
 
 **Development (no package install):** the `run` script sets `PYTHONPATH=src` and uses `.venv` if present:
 
@@ -25,11 +25,12 @@ Or explicitly: `ccsa run` (same as above). Optional: `ccsa run --force` to re-no
 ./run imap fetch
 ./run pdf normalize
 ./run export master
+./run export sqlite   # master.csv → data/exports/transactions.sqlite
 ```
 
 **Global install:** `pip install -e .` then `ccsa`, `ccsa run`, `ccsa init`, etc.
 
-**Logging:** Set `CCSA_LOG=DEBUG` for verbose logs (e.g. `CCSA_LOG=DEBUG ccsa run`).
+**Logging:** Set `CCSA_LOG=DEBUG` for verbose logs (e.g. `CCSA_LOG=DEBUG ccsa run`). Output uses **Rich**: colored levels, compact timestamps, and styled IMAP fetch lines.
 
 ---
 
@@ -44,6 +45,7 @@ Or explicitly: `ccsa run` (same as above). Optional: `ccsa run --force` to re-no
 | `ccsa pdf normalize` | Parse all PDFs in `data/raw-pdfs/` to `data/normalized/` (skips existing; use `-f` to re-parse). |
 | `ccsa check gaps` | Warn if any month is missing for a card between its first and last statement (`-s raw-pdfs` or `normalized`). |
 | `ccsa export master` | Merge normalized JSONs to a single CSV (default: `data/exports/master.csv`). |
+| `ccsa export sqlite` | Load `master.csv` into SQLite `transactions.sqlite` (default: same folder as CSV). Also runs after `ccsa run` / `export master`. Use **`--open` / `-O`** to open the CSV and drop into `sqlite3` in this shell. |
 
 ---
 
@@ -93,5 +95,6 @@ Parsers live under `src/ccsa/parsers/banks/` (e.g. `axis_v1`, `hdfc_v1`, `hdfc_v
 - **`data/raw-pdfs/<bank>/<card>/`** — statement PDFs (from IMAP or manual)
 - **`data/normalized/<bank>/<card>/`** — parsed JSON per statement
 - **`data/exports/master.csv`** — merged transaction table
+- **`data/exports/transactions.sqlite`** — same data as SQLite (rebuilt when exporting)
 - **`.local/config/`** — `secrets.json`, `card_rules.json`, optional `app.json`
 - **`src/ccsa/`** — CLI, IMAP fetch, PDF extraction, parsers (see [PLAN.md](PLAN.md))

@@ -37,8 +37,6 @@ Minimal shape:
 ]
 ```
 
-
-
 Placeholders in **`passwords`** are not supported; use the actual PDF password string in **`card_rules.json`**. Do not commit `card_rules.json` or `secrets.json`.
 
 ---
@@ -83,3 +81,11 @@ Optional **`.local/config/tags.json`**: a JSON **array** of rules. Each rule has
 On first setup, **`ccsa init`** (or any command that creates config templates) copies **[sample/tags.json](sample/tags.json)** to **`.local/config/tags.json`** if that file is missing; edit it with your own patterns. If **`docs/sample/tags.json`** is not present (e.g. custom install), a small built-in default list is written instead. Use standard Python `re` syntax (e.g. `\\.` for a literal dot, `\\b` for word boundaries).
 
 After changing tags, regenerate the export: **`ccsa export master`** (no PDF re-parse needed).
+
+---
+
+## SQLite (`transactions.sqlite`)
+
+**`ccsa run`** and **`ccsa export master`** also rebuild **`data/exports/transactions.sqlite`** from **`master.csv`** (table `transactions`; same fields as the CSV plus **`id`**; empty cells → SQL `NULL`). **`date`** is stored as **`YYYY-MM-DD`**. **`date`** and **`amount`** are indexed for filters/ranges. To import only: **`ccsa export sqlite`** (`-c` / `--csv`, `-o` / `--output`; defaults: `data/exports/master.csv` → `data/exports/transactions.sqlite`).
+
+**`--open` / `-O`** (on **`ccsa`**, **`run`**, **`export master`**, or **`export sqlite`**) opens **`master.csv`** with the OS default application, then runs **`sqlite3`** on the export DB in the **same** terminal. The CLI prints the **exact** SQL and sqlite dot-commands it passes to **`sqlite3`** (via **`-cmd`**) before the shell starts; then **`sqlite3`** runs that preview and stays interactive.
