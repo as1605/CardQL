@@ -23,3 +23,9 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.optional-dependencies]
+llm = [
+  "langchain-core>=0.3",
+  "langchain-ollama>=0.2",
+]

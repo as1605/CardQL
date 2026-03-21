@@ -127,6 +127,21 @@ Build a local-first system that fetches password-protected credit card statement
 - master table CSV/XLSX export
 - monthly spend per card/bank
 
+### Milestone 5: Natural language querying (local LLM) — **implemented (v1)**
+
+Aligned with **Extension** in `TASK.md`: SQLite export exists (**`ccsa export sqlite`** → **`data/exports/transactions.sqlite`**; `src/ccsa/sqlite_export.py`). **Q&A** uses a **fully local** **Qwen3.5-0.8GB**-class model via **Ollama** (default model env: **`CCSA_OLLAMA_MODEL`**, e.g. `qwen3.5:0.8b-q8_0`).
+
+**Trust model:** Real transaction fields and query results in prompts are **OK**; truncation only for context. **localhost** Ollama only by default. See **[docs/LLM_QUERY.md](docs/LLM_QUERY.md)**.
+
+**Shipped behavior**
+- **CLI:** **`ccsa query "…"`** (`pip install -e ".[llm]"`), flags `--db`, `--sql-only`, `--sample-rows`, **`--max-iterations`**, **`--verbose`**, **`--ensure-server`** (default: start **`ollama serve`** in background + **`ollama pull`** if needed).
+- **`ccsa ollama setup`:** same ensure step explicitly (Ollama must be installed separately from https://ollama.com).
+- **Code:** `src/ccsa/llm_query.py` — **LangChain** planner loop (`ChatPromptTemplate | ChatOllama | StrOutputParser`); **Pydantic** `LoopTurnOutput` (`sql` / `clarify` / `answer`); evidence accumulated across turns; **synthesis** pass if max iterations; **Python** `SELECT`-only validation; **read-only** SQLite.
+- **Optional:** LangGraph — not required; loop is a Python `for` + prompt state.
+
+**Non-goals (still)**
+- Default cloud LLMs; unconstrained SQL agents on tiny models.
+
 ## Extensibility checklist (adding a new bank/card)
 - Add an entry in **`card_rules.json`**: `bank`, `card`, `from_emails`, `passwords` (and optional `subject_contains`, `file_suffix`).
 - Run **`ccsa imap fetch`**; PDFs appear under `data/raw-pdfs/<bank>/<card>/`.

@@ -321,6 +321,10 @@ def init() -> None:
         "Next: edit [bold]secrets.json[/bold] (IMAP credentials) and "
         f"[bold]{paths.local_config_dir / 'card_rules.json'}[/bold] (bank/card → from_emails, passwords)."
     )
+    console.print(
+        "[dim]NL query:[/dim] [bold]pip install -e \".[llm]\"[/bold] then [bold]ccsa ollama setup[/bold] "
+        "(starts Ollama if needed + pulls the model) — then [bold]ccsa query \"…\"[/bold]."
+    )
 
 
 @imap_app.command("fetch")
@@ -676,6 +680,232 @@ def export_sqlite(
         raise SystemExit(1)
     if open_after:
         _post_export_open_tools(csv_p, db_p)
+
+
+ollama_app = typer.Typer(help="Ollama: local model server + weights for `ccsa query`.")
+app.add_typer(ollama_app, name="ollama")
+
+
+@ollama_app.command("setup")
+def ollama_setup_command(
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        "-m",
+        help="Ollama model tag (default: CCSA_OLLAMA_MODEL or qwen3.5:0.8b-q8_0)",
+    ),
+) -> None:
+    """Start ``ollama serve`` in the background if needed, then ``ollama pull`` the model."""
+    from .llm_query import DEFAULT_OLLAMA_MODEL
+    from .ollama_setup import (
+        ensure_ollama_api_and_tags,
+        model_in_tags_payload,
+        normalize_base_url,
+        pull_ollama_model_if_needed,
+    )
+
+    paths = get_paths()
+    ensure_local_dirs(paths)
+    m = model or os.environ.get("CCSA_OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+    base = normalize_base_url(os.environ.get("CCSA_OLLAMA_BASE_URL", "http://127.0.0.1:11434"))
+
+    try:
+        with console.status("[bold green]Checking Ollama…"):
+            tags, messages, started = ensure_ollama_api_and_tags(
+                base,
+                paths=paths,
+                start_background=True,
+            )
+        if not model_in_tags_payload(tags, m):
+            console.print(f"[dim]Pulling model {m!r} (this may take a while)…[/dim]")
+        messages.extend(
+            pull_ollama_model_if_needed(tags, m, pull_if_missing=True, announce_pull=False)
+        )
+    except RuntimeError as e:
+        console.print(f"[red]{e}[/red]")
+        console.print(
+            "[dim]Install Ollama: https://ollama.com/download — then re-run "
+            "[bold]ccsa ollama setup[/bold][/dim]"
+        )
+        raise SystemExit(1)
+
+    for line in messages:
+        okish = (
+            "Ready" in line
+            or "reachable" in line.lower()
+            or "Started" in line
+            or "already present" in line.lower()
+        )
+        console.print(f"[green]{line}[/green]" if okish else f"[dim]{line}[/dim]")
+    if started:
+        console.print(f"[dim]Logs: {paths.local_state_dir / 'ollama_serve.log'}[/dim]")
+
+
+@app.command("query")
+def query_command(
+    question: str = typer.Argument(..., help="Natural-language question over transactions"),
+    db_path: Path | None = typer.Option(
+        None,
+        "--db",
+        "-d",
+        help="SQLite database (default: data/exports/transactions.sqlite)",
+    ),
+    sql_only: bool = typer.Option(
+        False,
+        "--sql-only",
+        help="Only run planner + validation; print SQL, do not execute or call answer model",
+    ),
+    sample_rows: int = typer.Option(
+        20,
+        "--sample-rows",
+        help="Random rows included in planner context",
+        min=1,
+        max=500,
+    ),
+    max_iterations: int = typer.Option(
+        5,
+        "--max-iterations",
+        "-n",
+        help="Max planner turns (SQL / clarify / answer loop); then synthesis if needed",
+        min=1,
+        max=20,
+    ),
+    verbose_steps: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Print each SQL step in the loop",
+    ),
+    ensure_server: bool = typer.Option(
+        True,
+        "--ensure-server/--no-ensure-server",
+        help="If Ollama is down, start `ollama serve` in the background and pull the model if missing",
+    ),
+) -> None:
+    """Ask a question in English using a local Ollama model (requires: ``pip install -e '.[llm]'``)."""
+    try:
+        import langchain_core  # noqa: F401
+        import langchain_ollama  # noqa: F401
+        from .llm_query import DEFAULT_OLLAMA_BASE_URL, DEFAULT_OLLAMA_MODEL, run_natural_language_query
+        from .ollama_setup import (
+            ensure_ollama_api_and_tags,
+            model_in_tags_payload,
+            normalize_base_url,
+            pull_ollama_model_if_needed,
+        )
+    except ImportError as e:
+        console.print(
+            "[red]Missing LLM dependencies. Install:[/red] [bold]pip install -e \".[llm]\"[/bold]\n"
+            f"[dim]{e}[/dim]"
+        )
+        raise SystemExit(1)
+
+    paths = get_paths()
+    ensure_local_dirs(paths)
+    db = Path(db_path or (paths.exports_dir / "transactions.sqlite")).resolve()
+    if not db.is_file():
+        console.print(f"[red]Database not found: {db}[/red] [dim](run `ccsa export master` or `ccsa export sqlite`)[/dim]")
+        raise SystemExit(1)
+
+    if ensure_server:
+        try:
+            base_ollama = normalize_base_url(DEFAULT_OLLAMA_BASE_URL)
+            with console.status("[bold green]Checking Ollama…"):
+                tags, msgs, _ = ensure_ollama_api_and_tags(
+                    base_ollama,
+                    paths=paths,
+                    start_background=True,
+                )
+            if not model_in_tags_payload(tags, DEFAULT_OLLAMA_MODEL):
+                console.print(
+                    f"[dim]Pulling model {DEFAULT_OLLAMA_MODEL!r} (this may take a while)…[/dim]"
+                )
+            msgs.extend(
+                pull_ollama_model_if_needed(
+                    tags,
+                    DEFAULT_OLLAMA_MODEL,
+                    pull_if_missing=True,
+                    announce_pull=False,
+                )
+            )
+            for line in msgs:
+                console.print(f"[dim]{line}[/dim]")
+        except RuntimeError as e:
+            console.print(f"[red]{e}[/red]")
+            console.print("[dim]Tip: [bold]ccsa ollama setup[/bold] or install https://ollama.com/download[/dim]")
+            raise SystemExit(1)
+
+    console.print(
+        f"[dim]Ollama[/dim] [bold]{DEFAULT_OLLAMA_MODEL}[/bold] @ [dim]{DEFAULT_OLLAMA_BASE_URL}[/]"
+        f" [dim]· max {max_iterations} iteration(s)[/dim]"
+    )
+    with console.status("[bold green]Query: starting…[/bold green]", spinner="dots") as query_status:
+
+        def _query_progress(line: str) -> None:
+            query_status.update(f"[bold green]{rich_escape(line)}[/bold green]")
+
+        result = run_natural_language_query(
+            question,
+            str(db),
+            sample_rows=sample_rows,
+            sql_only=sql_only,
+            max_iterations=max_iterations,
+            progress_callback=_query_progress,
+        )
+
+    if result.clarification:
+        console.print("[yellow]Need clarification:[/yellow]")
+        console.print(result.clarification)
+        raise SystemExit(0)
+
+    if verbose_steps and result.steps:
+        console.print("[dim]── Loop steps ──[/dim]")
+        for st in result.steps:
+            console.print(f"  [cyan]Step {st.iteration}[/cyan] [dim]{st.sql[:120]}{'…' if len(st.sql) > 120 else ''}[/dim]")
+            if st.error:
+                console.print(f"    [red]{st.error}[/red]")
+            else:
+                console.print(f"    [dim]→ {st.row_count} row(s)[/dim]")
+        if result.stopped_reason:
+            console.print(f"[dim]Stopped: {result.stopped_reason}[/dim]")
+        console.print()
+
+    # Planner parse / validation failure before any SQL
+    if result.error and not result.sql_executed:
+        console.print(f"[red]{result.error}[/red]")
+        if result.planner_raw:
+            console.print("[dim]Last planner output (raw):[/dim]")
+            pr = result.planner_raw[:8000]
+            try:
+                console.print(Syntax(pr, "json", word_wrap=True))
+            except Exception:
+                console.print(pr)
+        raise SystemExit(1)
+
+    if result.sql_executed:
+        console.print("[dim]SQL:[/dim]")
+        console.print(Syntax(result.sql_executed, "sql", word_wrap=True))
+
+    if sql_only:
+        console.print("[dim]--sql-only:[/dim] skipping execute and answer.")
+        raise SystemExit(0)
+
+    if result.rows:
+        tbl = Table(show_header=True, header_style="bold", border_style="dim")
+        for col in result.rows[0].keys():
+            tbl.add_column(str(col), overflow="fold")
+        for row in result.rows[:50]:
+            tbl.add_row(*[str(row.get(c, "")) for c in result.rows[0].keys()])
+        if len(result.rows) > 50:
+            console.print(f"[dim](showing 50 of {len(result.rows)} rows)[/dim]")
+        console.print(tbl)
+        console.print()
+
+    if result.error:
+        console.print(f"[red]{result.error}[/red]")
+        raise SystemExit(1)
+
+    console.print(result.answer)
 
 
 if __name__ == "__main__":

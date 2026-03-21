@@ -4,3 +4,7 @@ rich>=13.7
 pydantic>=2.6
 pikepdf>=8.0
 pypdf>=5.0
+
+# Optional natural-language queries (install: pip install -r requirements.txt && pip install -e ".[llm]")
+# langchain-core>=0.3
+# langchain-ollama>=0.2

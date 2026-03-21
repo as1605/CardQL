@@ -14,3 +14,11 @@ I receive credit card statements from multi banks/cards in my mail box. They are
 5. Keep a modular architecture, plan to keep code structure in an extensible way
 
 Create PLAN.md with the plan for this project
+
+## Extension: Natural Language Querying
+
+1. Create a step to convert the .csv to .sqlite3, keep appropriate columns
+2. Connect a small LLM (Qwen3.5-0.8GB, local) and let the user ask queries on this data, and give that query to the LLM with metadata on the table schema and sample values in each column.
+3. Run the SQL query, then ask the LLM to use this data to answer the user's query
+4. There will be 2 prompts, one to take user's query and generate either SQL queries, or ask for clarification (excluding data which can be queried), and the other prompt to take the data from SQL queries and answer the users question. Suggest a better workflow if possible using Langchain
+5. Keep a loop flow, it starts with a user query and table schema, but the model can continue to ask clarification/run more queries till it can give answer

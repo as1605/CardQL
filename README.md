@@ -28,7 +28,7 @@ Or explicitly: `ccsa run` (same as above). Optional: `ccsa run --force` to re-no
 ./run export sqlite   # master.csv → data/exports/transactions.sqlite
 ```
 
-**Global install:** `pip install -e .` then `ccsa`, `ccsa run`, `ccsa init`, etc.
+**Global install:** `pip install -e .` then `ccsa`, `ccsa run`, `ccsa init`, etc. For **`ccsa query`**, also: `pip install -e ".[llm]"` and a running **Ollama** with your model (e.g. `qwen3.5:0.8b-q8_0`).
 
 **Logging:** Set `CCSA_LOG=DEBUG` for verbose logs (e.g. `CCSA_LOG=DEBUG ccsa run`). Output uses **Rich**: colored levels, compact timestamps, and styled IMAP fetch lines.
 
@@ -46,6 +46,8 @@ Or explicitly: `ccsa run` (same as above). Optional: `ccsa run --force` to re-no
 | `ccsa check gaps` | Warn if any month is missing for a card between its first and last statement (`-s raw-pdfs` or `normalized`). |
 | `ccsa export master` | Merge normalized JSONs to a single CSV (default: `data/exports/master.csv`). |
 | `ccsa export sqlite` | Load `master.csv` into SQLite `transactions.sqlite` (default: same folder as CSV). Also runs after `ccsa run` / `export master`. Use **`--open` / `-O`** to open the CSV and drop into `sqlite3` in this shell. |
+| `ccsa query "…"` | NL Q&A over **`transactions.sqlite`** (**Ollama** + LangChain). **Loop:** SQL → evidence → **answer** / **clarify** (`-n`, `-v`). **`--ensure-server`** (default): start `ollama serve` in background + `ollama pull` if needed. `pip install -e ".[llm]"`. [docs/LLM_QUERY.md](docs/LLM_QUERY.md). |
+| `ccsa ollama setup` | **E2E:** ensure Ollama API is up (background **`ollama serve`**) and download the default chat model (`ollama pull`). |
 
 ---
 
@@ -73,6 +75,8 @@ Use **`.local/config/card_rules.json`** — one object per bank/card:
 - Optional: **`to_emails`**, **`subject_contains`**, **`file_suffix`**
 
 Optional **`app.json`** can override IMAP server/folder. See [docs/CONFIG.md](docs/CONFIG.md) and [docs/IMAP_SETUP.md](docs/IMAP_SETUP.md).
+
+**NL queries:** `ccsa query` uses a **local-only** **Qwen3.5-0.8GB** (via Ollama; real transaction data in prompts is OK by design) — [docs/LLM_QUERY.md](docs/LLM_QUERY.md), [PLAN.md](PLAN.md) (Milestone 5).
 
 ---
 
