@@ -473,14 +473,18 @@ def _message_text(msg: Any) -> str:
     return str(getattr(msg, "content", "") or "")
 
 
-def _make_llm_sql():
+def _make_llm_sql(
+    *,
+    model: str | None = None,
+    base_url: str | None = None,
+):
     """LLM for SQL generation (JSON mode, low temperature)."""
     from langchain_ollama import ChatOllama
 
     use_json = os.environ.get("CCSA_PLANNER_JSON_FORMAT", "1").lower() not in ("0", "false", "no")
     kw: dict[str, Any] = {
-        "model": DEFAULT_OLLAMA_MODEL,
-        "base_url": DEFAULT_OLLAMA_BASE_URL,
+        "model": model or DEFAULT_OLLAMA_MODEL,
+        "base_url": base_url or DEFAULT_OLLAMA_BASE_URL,
         "temperature": 0.1,
         "num_predict": 1024,
         "reasoning": _ollama_reasoning_param(),
@@ -494,13 +498,17 @@ def _make_llm_sql():
         return ChatOllama(**kw)
 
 
-def _make_llm_answer():
+def _make_llm_answer(
+    *,
+    model: str | None = None,
+    base_url: str | None = None,
+):
     """LLM for natural-language answer (no JSON constraint)."""
     from langchain_ollama import ChatOllama
 
     kw: dict[str, Any] = {
-        "model": DEFAULT_OLLAMA_MODEL,
-        "base_url": DEFAULT_OLLAMA_BASE_URL,
+        "model": model or DEFAULT_OLLAMA_MODEL,
+        "base_url": base_url or DEFAULT_OLLAMA_BASE_URL,
         "temperature": 0.2,
         "num_predict": 2048,
         "reasoning": _ollama_reasoning_param(),
@@ -544,6 +552,9 @@ def _synthesize_answer(
     steps: list[QueryStep],
     bundle_text: str,
     aggregate_line: str | None = None,
+    *,
+    ollama_model: str | None = None,
+    ollama_base_url: str | None = None,
 ) -> str:
     """Single LLM call: answer the question from SQL evidence."""
     from langchain_core.messages import SystemMessage
@@ -567,7 +578,7 @@ def _synthesize_answer(
     prompt = ChatPromptTemplate.from_messages(
         [system_msg, HumanMessagePromptTemplate(prompt=_human)]
     )
-    chain = prompt | _make_llm_answer()
+    chain = prompt | _make_llm_answer(model=ollama_model, base_url=ollama_base_url)
     return _message_text(
         chain.invoke({"bundle": bundle_text, "question": question, "ev": ev})
     ).strip()
@@ -625,12 +636,17 @@ def run_natural_language_query(
     max_iterations: int | None = None,
     sql_only: bool = False,
     progress_callback: Callable[[str], None] | None = None,
+    ollama_model: str | None = None,
+    ollama_base_url: str | None = None,
 ) -> QueryResult:
     """
     Two-phase pipeline (optimised for small ≤3 B models):
 
     **Phase 1** — SQL generation + execution (up to *max_iterations* attempts).
     **Phase 2** — Answer synthesis from SQL evidence + auto-aggregates.
+
+    *ollama_model* / *ollama_base_url* override :data:`DEFAULT_OLLAMA_MODEL` /
+    :data:`DEFAULT_OLLAMA_BASE_URL` for both LLM calls.
     """
     from langchain_core.messages import SystemMessage
     from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, PromptTemplate
@@ -641,6 +657,9 @@ def run_natural_language_query(
 
     cap = max_iterations if max_iterations is not None else DEFAULT_MAX_ITERATIONS
     cap = max(1, min(int(cap), 20))
+
+    ollama_m = ollama_model or DEFAULT_OLLAMA_MODEL
+    ollama_u = ollama_base_url or DEFAULT_OLLAMA_BASE_URL
 
     def _prog(msg: str) -> None:
         line = _short_status_line(msg)
@@ -674,7 +693,7 @@ def run_natural_language_query(
         SystemMessage(content=sql_system),
         HumanMessagePromptTemplate(prompt=_human_sql),
     ])
-    sql_chain = sql_prompt | _make_llm_sql()
+    sql_chain = sql_prompt | _make_llm_sql(model=ollama_m, base_url=ollama_u)
 
     steps: list[QueryStep] = []
     last_rows: list[dict[str, Any]] = []
@@ -775,7 +794,14 @@ def run_natural_language_query(
 
     try:
         _prog("Generating answer from SQL results…")
-        answer = _synthesize_answer(question, steps, ctx.text, aggregate_line=agg_line)
+        answer = _synthesize_answer(
+            question,
+            steps,
+            ctx.text,
+            aggregate_line=agg_line,
+            ollama_model=ollama_m,
+            ollama_base_url=ollama_u,
+        )
         _prog(f"Done: {_short_status_line(answer, 96)}")
     except Exception as e:
         log.exception("Answer generation failed")

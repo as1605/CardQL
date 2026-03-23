@@ -134,7 +134,7 @@ Aligned with **Extension** in `TASK.md`: SQLite export exists (**`ccsa export sq
 **Trust model:** Real transaction fields and query results in prompts are **OK**; truncation only for context. **localhost** Ollama only by default. See **[docs/LLM_QUERY.md](docs/LLM_QUERY.md)**.
 
 **Shipped behavior**
-- **CLI:** **`ccsa query "…"`** (`pip install -e ".[llm]"`), flags `--db`, `--sql-only`, `--sample-rows`, **`--max-iterations`**, **`--verbose`**, **`--ensure-server`** (default: start **`ollama serve`** in background + **`ollama pull`** if needed).
+- **CLI:** **`ccsa query "…"`** (after `pip install -r requirements.txt` + `pip install .`), flags `--db`, `--sql-only`, `--sample-rows`, **`--max-iterations`**, **`--verbose`**, **`--ensure-server`** (default: start **`ollama serve`** in background + **`ollama pull`** if needed).
 - **`ccsa ollama setup`:** same ensure step explicitly (Ollama must be installed separately from https://ollama.com).
 - **Code:** `src/ccsa/llm_query.py` — **LangChain** planner loop (`ChatPromptTemplate | ChatOllama | StrOutputParser`); **Pydantic** `LoopTurnOutput` (`sql` / `clarify` / `answer`); evidence accumulated across turns; **synthesis** pass if max iterations; **Python** `SELECT`-only validation; **read-only** SQLite.
 - **Optional:** LangGraph — not required; loop is a Python `for` + prompt state.

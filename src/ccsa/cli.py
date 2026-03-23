@@ -322,7 +322,7 @@ def init() -> None:
         f"[bold]{paths.local_config_dir / 'card_rules.json'}[/bold] (bank/card → from_emails, passwords)."
     )
     console.print(
-        "[dim]NL query:[/dim] [bold]pip install -e \".[llm]\"[/bold] then [bold]ccsa ollama setup[/bold] "
+        "[dim]NL query:[/dim] [bold]pip install -r requirements.txt[/bold] then [bold]ccsa ollama setup[/bold] "
         "(starts Ollama if needed + pulls the model) — then [bold]ccsa query \"…\"[/bold]."
     )
 
@@ -782,7 +782,7 @@ def query_command(
         help="If Ollama is down, start `ollama serve` in the background and pull the model if missing",
     ),
 ) -> None:
-    """Ask a question in English using a local Ollama model (requires: ``pip install -e '.[llm]'``)."""
+    """Ask a question in English using a local Ollama model (requires LangChain deps from ``requirements.txt``)."""
     try:
         import langchain_core  # noqa: F401
         import langchain_ollama  # noqa: F401
@@ -795,7 +795,7 @@ def query_command(
         )
     except ImportError as e:
         console.print(
-            "[red]Missing LLM dependencies. Install:[/red] [bold]pip install -e \".[llm]\"[/bold]\n"
+            "[red]Missing LLM dependencies. Install:[/red] [bold]pip install -r requirements.txt[/bold]\n"
             f"[dim]{e}[/dim]"
         )
         raise SystemExit(1)
@@ -906,6 +906,36 @@ def query_command(
         raise SystemExit(1)
 
     console.print(result.answer)
+
+
+@app.command("ui")
+def ui_command(
+    port: int = typer.Option(8501, "--port", "-p", help="Streamlit port"),
+    host: str = typer.Option("127.0.0.1", "--host", help="Streamlit host"),
+) -> None:
+    """Launch the Streamlit chat UI for NL transaction queries."""
+    streamlit_exe = shutil.which("streamlit")
+    if not streamlit_exe:
+        console.print(
+            "[red]streamlit not found.[/red] Install with "
+            "[bold]pip install -r requirements.txt[/bold] (includes streamlit)."
+        )
+        raise SystemExit(1)
+    app_path = Path(__file__).resolve().parent / "streamlit_app.py"
+    env = os.environ.copy()
+    repo_root = str(get_paths().repo_root.resolve())
+    env["PYTHONPATH"] = f"{repo_root}/src" + (f":{env['PYTHONPATH']}" if env.get("PYTHONPATH") else "")
+    cmd = [
+        streamlit_exe,
+        "run",
+        str(app_path),
+        "--server.port",
+        str(port),
+        "--server.address",
+        host,
+    ]
+    console.print(f"[dim]Launching Streamlit on http://{host}:{port}[/dim]")
+    subprocess.run(cmd, check=False, env=env)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ Uses only the standard library: one ``GET /api/tags`` per check (server up + mod
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 import os
@@ -19,7 +20,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import IO, Any, cast
+from typing import IO, Any, Callable, cast
 
 from .paths import Paths, get_paths
 
@@ -192,6 +193,73 @@ def pull_model(model: str, *, capture_output: bool = False) -> int:
     return subprocess.run([ollama, "pull", model], check=False).returncode
 
 
+def pull_model_api_stream(
+    base_url: str,
+    model: str,
+    *,
+    progress_callback: Callable[[float], None] | None = None,
+) -> None:
+    """
+    Pull a model via ``POST /api/pull`` with ``stream: true`` and parse NDJSON lines.
+
+    Invokes *progress_callback* with a fraction in ``[0, 1]`` when ``completed`` / ``total``
+    appear (per-layer download progress). Raises on ``error`` in the stream or HTTP failure.
+    """
+    url = f"{normalize_base_url(base_url)}/api/pull"
+    body = json.dumps({"name": model, "stream": True}).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json", "User-Agent": "ccsa/ollama-setup"},
+    )
+    try:
+        resp = urllib.request.urlopen(req, timeout=None)
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8", errors="replace")[:500]
+        except OSError:
+            pass
+        raise RuntimeError(f"Ollama pull API HTTP {e.code}: {e.reason} {detail}".strip()) from e
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Ollama pull API unreachable: {e}") from e
+
+    last_frac = 0.0
+    with resp:
+        tw = io.TextIOWrapper(resp, encoding="utf-8")
+        for line in tw:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj: dict[str, Any] = json.loads(line)
+            except json.JSONDecodeError:
+                log.debug("ollama pull non-JSON line: %s", line[:120])
+                continue
+            if obj.get("error"):
+                raise RuntimeError(str(obj["error"]))
+            status = str(obj.get("status") or "")
+            if status.lower() == "success" and progress_callback:
+                last_frac = 1.0
+                progress_callback(1.0)
+                continue
+            tot = obj.get("total")
+            completed = obj.get("completed")
+            if (
+                isinstance(tot, (int, float))
+                and float(tot) > 0
+                and isinstance(completed, (int, float))
+                and progress_callback
+            ):
+                frac = min(1.0, max(0.0, float(completed) / float(tot)))
+                last_frac = max(last_frac, frac)
+                progress_callback(last_frac)
+
+    if progress_callback and last_frac < 1.0:
+        progress_callback(1.0)
+
+
 def ensure_ollama_api_and_tags(
     base_url: str,
     *,
@@ -242,6 +310,8 @@ def pull_ollama_model_if_needed(
     *,
     pull_if_missing: bool = True,
     announce_pull: bool = True,
+    base_url: str | None = None,
+    progress_callback: Callable[[float], None] | None = None,
 ) -> list[str]:
     """
     If ``pull_if_missing`` and the model is absent from ``tags``, run ``ollama pull``.
@@ -251,6 +321,9 @@ def pull_ollama_model_if_needed(
     When ``announce_pull`` is True (default), prints a short line to stderr before pulling
     (for programmatic use of :func:`ensure_ollama_ready`). UIs that print their own line
     should pass ``announce_pull=False``.
+
+    When *progress_callback* is set, uses ``POST /api/pull`` streaming (needs *base_url* or
+    ``CCSA_OLLAMA_BASE_URL``) so callers can show download progress; otherwise uses the CLI.
     """
     if not pull_if_missing:
         return []
@@ -261,9 +334,15 @@ def pull_ollama_model_if_needed(
                 file=sys.stderr,
                 flush=True,
             )
-        code = pull_model(model, capture_output=False)
-        if code != 0:
-            raise RuntimeError(f"ollama pull {model!r} failed with exit code {code}")
+        if progress_callback is not None:
+            bu = normalize_base_url(
+                base_url or os.environ.get("CCSA_OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+            )
+            pull_model_api_stream(bu, model, progress_callback=progress_callback)
+        else:
+            code = pull_model(model, capture_output=False)
+            if code != 0:
+                raise RuntimeError(f"ollama pull {model!r} failed with exit code {code}")
         return [f"Model {model!r} ready."]
     return [f"Model {model!r} already present."]
 

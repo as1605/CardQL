@@ -9,6 +9,10 @@ dependencies = [
   "rich>=13.7",
   "pydantic>=2.6",
   "pikepdf>=8.0",
+  "pypdf>=5.0",
+  "langchain-core>=0.3",
+  "langchain-ollama>=0.2",
+  "streamlit>=1.35",
 ]
 
 [project.scripts]
@@ -23,9 +27,3 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[project.optional-dependencies]
-llm = [
-  "langchain-core>=0.3",
-  "langchain-ollama>=0.2",
-]

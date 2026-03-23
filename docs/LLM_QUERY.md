@@ -4,7 +4,7 @@ Ask questions in plain English over **`data/exports/transactions.sqlite`** using
 
 ## Implemented in code
 
-- **CLI:** `ccsa query "your question"` (requires `pip install -e ".[llm]"`).
+- **Interfaces:** `ccsa query "your question"` (CLI) and `ccsa ui` (Streamlit chat UI), both using the same backend. Install: `pip install -r requirements.txt` then `pip install .` (all Python deps are in `requirements.txt`; no optional extras).
 - **Stack:** `langchain-core` (prompts + `Runnable`) + `langchain-ollama` (`ChatOllama`).
 - **Two-phase pipeline** (optimised for small 0.5–3 B models):
   1. **SQL generation** — ask the model for `{"sql": "SELECT …"}`. A robust extractor (`_extract_sql_from_llm_response`) handles clean JSON, JSON with trailing semicolons, markdown code fences, bare `SELECT` in prose, and junk extra keys. On failure the error is fed back and the model retries (up to `--max-iterations`, default 5).
@@ -17,7 +17,7 @@ Ask questions in plain English over **`data/exports/transactions.sqlite`** using
 ### End-to-end: Ollama server + model download
 
 1. Install **[Ollama](https://ollama.com/download)** (desktop app or CLI on PATH).
-2. Python extras: `pip install -e ".[llm]"`.
+2. Python deps: `pip install -r requirements.txt` (includes LangChain + Streamlit).
 3. **One-shot setup** (starts `ollama serve` in the background if nothing is listening, then `ollama pull` the model if missing):
 
    ```bash
@@ -28,7 +28,7 @@ Ask questions in plain English over **`data/exports/transactions.sqlite`** using
    - Logs: **`.local/state/ollama_serve.log`**
    - PID: **`.local/state/ollama_serve_ccsa.pid`**
 
-4. **`ccsa query`** runs the same ensure step by default (`--ensure-server`). Use `--no-ensure-server` if you already manage Ollama yourself.
+4. **`ccsa query`** and **`ccsa ui`** run the same backend. `ccsa query` has `--ensure-server`; `ccsa ui` exposes the same behavior as a checkbox in the sidebar.
 
 ccsa does **not** install the Ollama binary; it only runs `ollama serve` / `ollama pull` when the CLI is available.
 
@@ -62,23 +62,24 @@ The two-phase approach keeps each LLM call focused on **one task**:
 ## CLI
 
 ```bash
-pip install -e ".[llm]"
+pip install -r requirements.txt
+pip install .
 ollama pull qwen3.5:0.8b-q8_0
 
 ccsa query "How much did I spend on Zomato last month?"
 ccsa query -n 8 -v "Compare spend by bank across quarters"
 ccsa query --sql-only "total by bank last month"
+ccsa ui
 ```
 
 - `--db` defaults to `data/exports/transactions.sqlite`
 - `--sample-rows` controls how many random rows feed the context (default 20)
 - `CCSA_QUERY_MAX_ITERATIONS` env var sets the default max SQL attempts
 
-## Dependencies (optional extra)
+## Dependencies
 
-- **`pip install -e ".[llm]"`** → `langchain-core`, `langchain-ollama` (see `pyproject.toml`)
+- **`requirements.txt`** — full stack: core + `langchain-core`, `langchain-ollama`, `streamlit` (mirrors `pyproject.toml` `dependencies`)
 - **Ollama** running locally with your model
-- **`pydantic`** (already a core dependency)
 
 ## Safety checklist
 

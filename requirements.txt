@@ -1,10 +1,8 @@
-# Dependencies only — install in a venv and run with PYTHONPATH=src (see README).
 typer>=0.12
 rich>=13.7
 pydantic>=2.6
 pikepdf>=8.0
 pypdf>=5.0
-
-# Optional natural-language queries (install: pip install -r requirements.txt && pip install -e ".[llm]")
-# langchain-core>=0.3
-# langchain-ollama>=0.2
+langchain-core>=0.3
+langchain-ollama>=0.2
+streamlit>=1.35

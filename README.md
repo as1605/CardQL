@@ -6,18 +6,25 @@ Local-first CLI to fetch password-protected credit card statement PDFs from Gmai
 
 ## Quick start
 
-**One command** — setup, fetch, normalize, and export (uses existing config; skips work already done):
+**Install** (from the repo root — no editable install needed):
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+pip install .               # installs the `ccsa` command
+```
+
+**One command** — setup, fetch, normalize, and export (uses existing config; skips work already done):
+
+```bash
 # Edit .local/config/secrets.json and .local/config/card_rules.json (see below)
-.venv/bin/python -m ccsa
+ccsa
 ```
 
 Or explicitly: `ccsa run` (same as above). Optional: `ccsa run --force` to re-normalize all PDFs; `ccsa run -o path/to/master.csv` to set the output path. After a successful export, **`--open` / `-O`** opens **`master.csv`** with your OS default app (e.g. Excel/Numbers) and then starts an interactive **`sqlite3`** session on **`transactions.sqlite`** in the **same** terminal (it prints the exact **SQL** and **`.headers` / `.mode`** it will run, then **`sqlite3`** executes that preview and stays interactive) (macOS: `open`; Linux: `xdg-open`; Windows: default handler). Works on **`ccsa`**, **`ccsa run`**, **`ccsa export master`**, and **`ccsa export sqlite`**.
 
-**Development (no package install):** the `run` script sets `PYTHONPATH=src` and uses `.venv` if present:
+**Without `pip install .`:** the `run` script sets `PYTHONPATH=src` and uses `.venv` if present (only `requirements.txt` needed):
 
 ```bash
 ./run init
@@ -28,7 +35,7 @@ Or explicitly: `ccsa run` (same as above). Optional: `ccsa run --force` to re-no
 ./run export sqlite   # master.csv → data/exports/transactions.sqlite
 ```
 
-**Global install:** `pip install -e .` then `ccsa`, `ccsa run`, `ccsa init`, etc. For **`ccsa query`**, also: `pip install -e ".[llm]"` and a running **Ollama** with your model (e.g. `qwen3.5:0.8b-q8_0`).
+**NL chat / query** (`ccsa query`, `ccsa ui`): same `requirements.txt` already includes LangChain + Streamlit. You still need **Ollama** and a model (e.g. `qwen3.5:0.8b-q8_0`). Run **`ccsa ollama setup`** once to pull weights if needed.
 
 **Logging:** Set `CCSA_LOG=DEBUG` for verbose logs (e.g. `CCSA_LOG=DEBUG ccsa run`). Output uses **Rich**: colored levels, compact timestamps, and styled IMAP fetch lines.
 
@@ -46,7 +53,8 @@ Or explicitly: `ccsa run` (same as above). Optional: `ccsa run --force` to re-no
 | `ccsa check gaps` | Warn if any month is missing for a card between its first and last statement (`-s raw-pdfs` or `normalized`). |
 | `ccsa export master` | Merge normalized JSONs to a single CSV (default: `data/exports/master.csv`). |
 | `ccsa export sqlite` | Load `master.csv` into SQLite `transactions.sqlite` (default: same folder as CSV). Also runs after `ccsa run` / `export master`. Use **`--open` / `-O`** to open the CSV and drop into `sqlite3` in this shell. |
-| `ccsa query "…"` | NL Q&A over **`transactions.sqlite`** (**Ollama** + LangChain). **Loop:** SQL → evidence → **answer** / **clarify** (`-n`, `-v`). **`--ensure-server`** (default): start `ollama serve` in background + `ollama pull` if needed. `pip install -e ".[llm]"`. [docs/LLM_QUERY.md](docs/LLM_QUERY.md). |
+| `ccsa query "…"` | NL Q&A over **`transactions.sqlite`** (**Ollama** + LangChain). **`--ensure-server`** (default): start `ollama serve` in background + `ollama pull` if needed. [docs/LLM_QUERY.md](docs/LLM_QUERY.md). |
+| `ccsa ui` | Launch **Streamlit chat UI** for NL querying over `transactions.sqlite` (uses same backend as `ccsa query`). |
 | `ccsa ollama setup` | **E2E:** ensure Ollama API is up (background **`ollama serve`**) and download the default chat model (`ollama pull`). |
 
 ---
