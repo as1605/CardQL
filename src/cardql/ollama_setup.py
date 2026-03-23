@@ -24,9 +24,9 @@ from typing import IO, Any, Callable, cast
 
 from .paths import Paths, get_paths
 
-log = logging.getLogger("ccsa.ollama_setup")
+log = logging.getLogger("cardql.ollama_setup")
 
-PID_FILENAME = "ollama_serve_ccsa.pid"
+PID_FILENAME = "ollama_serve_cardql.pid"
 LOG_FILENAME = "ollama_serve.log"
 
 OLLAMA_DOWNLOAD_URL = "https://ollama.com/download"
@@ -55,7 +55,7 @@ def fetch_api_tags(base_url: str, timeout_s: float = 10.0) -> dict[str, Any] | N
         req = urllib.request.Request(
             f"{base}/api/tags",
             method="GET",
-            headers={"User-Agent": "ccsa/ollama-setup"},
+            headers={"User-Agent": "cardql/ollama-setup"},
         )
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             if resp.status != 200:
@@ -140,10 +140,10 @@ def start_ollama_serve_background(paths: Paths | None = None) -> tuple[bool, str
     If the API is already up, return (False, message).
     Otherwise start ``ollama serve`` in the background and return (True, message).
 
-    Writes PID to ``.local/state/ollama_serve_ccsa.pid`` and logs to ``ollama_serve.log``.
+    Writes PID to ``.local/state/ollama_serve_cardql.pid`` and logs to ``ollama_serve.log``.
     """
     paths = paths or get_paths()
-    base_url = normalize_base_url(os.environ.get("CCSA_OLLAMA_BASE_URL", "http://127.0.0.1:11434"))
+    base_url = normalize_base_url(os.environ.get("CARDQL_OLLAMA_BASE_URL", "http://127.0.0.1:11434"))
 
     if is_server_up(base_url):
         return False, "Ollama API already running."
@@ -156,7 +156,7 @@ def start_ollama_serve_background(paths: Paths | None = None) -> tuple[bool, str
     paths.local_state_dir.mkdir(parents=True, exist_ok=True)
     log_path = paths.local_state_dir / LOG_FILENAME
     log_f = open(log_path, "a", encoding="utf-8")
-    log_f.write(f"\n--- ccsa ollama serve {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+    log_f.write(f"\n--- cardql ollama serve {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
     log_f.flush()
 
     proc = _popen_ollama_serve(log_f)
@@ -211,7 +211,7 @@ def pull_model_api_stream(
         url,
         data=body,
         method="POST",
-        headers={"Content-Type": "application/json", "User-Agent": "ccsa/ollama-setup"},
+        headers={"Content-Type": "application/json", "User-Agent": "cardql/ollama-setup"},
     )
     try:
         resp = urllib.request.urlopen(req, timeout=None)
@@ -286,7 +286,7 @@ def ensure_ollama_api_and_tags(
         if not start_background:
             raise RuntimeError(
                 f"Ollama API not reachable at {base_url}. "
-                "Start Ollama (desktop app or `ollama serve`) or run: ccsa ollama setup"
+                "Start Ollama (desktop app or `ollama serve`) or run: cardql ollama setup"
             )
         did, msg = start_ollama_serve_background(paths)
         messages.append(msg)
@@ -323,7 +323,7 @@ def pull_ollama_model_if_needed(
     should pass ``announce_pull=False``.
 
     When *progress_callback* is set, uses ``POST /api/pull`` streaming (needs *base_url* or
-    ``CCSA_OLLAMA_BASE_URL``) so callers can show download progress; otherwise uses the CLI.
+    ``CARDQL_OLLAMA_BASE_URL``) so callers can show download progress; otherwise uses the CLI.
     """
     if not pull_if_missing:
         return []
@@ -336,7 +336,7 @@ def pull_ollama_model_if_needed(
             )
         if progress_callback is not None:
             bu = normalize_base_url(
-                base_url or os.environ.get("CCSA_OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+                base_url or os.environ.get("CARDQL_OLLAMA_BASE_URL", "http://127.0.0.1:11434")
             )
             pull_model_api_stream(bu, model, progress_callback=progress_callback)
         else:

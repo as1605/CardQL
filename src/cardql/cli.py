@@ -23,7 +23,7 @@ from .parsers import get_parser, get_parsers_for_bank, try_parse_with_bank
 from .parsers.schema import Statement, Transaction
 from .sqlite_export import import_master_csv_to_sqlite
 
-app = typer.Typer(help="Credit card statement analyzer CLI.")
+app = typer.Typer(help="CardQL — chat with your credit card statements.")
 console = Console()
 
 
@@ -117,10 +117,10 @@ def _sync_sqlite_from_master_csv(csv_path: Path) -> None:
 
 
 def _configure_logging() -> None:
-    """Configure ccsa logger; use env CCSA_LOG=DEBUG for verbose output."""
-    level_name = os.environ.get("CCSA_LOG", "INFO").upper()
+    """Configure cardql logger; use env CARDQL_LOG=DEBUG for verbose output."""
+    level_name = os.environ.get("CARDQL_LOG", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
-    log = logging.getLogger("ccsa")
+    log = logging.getLogger("cardql")
     log.setLevel(level)
     if not log.handlers:
         h = RichHandler(
@@ -322,8 +322,8 @@ def init() -> None:
         f"[bold]{paths.local_config_dir / 'card_rules.json'}[/bold] (bank/card → from_emails, passwords)."
     )
     console.print(
-        "[dim]NL query:[/dim] [bold]pip install -r requirements.txt[/bold] then [bold]ccsa ollama setup[/bold] "
-        "(starts Ollama if needed + pulls the model) — then [bold]ccsa query \"…\"[/bold]."
+        "[dim]NL query:[/dim] [bold]pip install -r requirements.txt[/bold] then [bold]cardql ollama setup[/bold] "
+        "(starts Ollama if needed + pulls the model) — then [bold]cardql query \"…\"[/bold]."
     )
 
 
@@ -616,7 +616,7 @@ def export_master(
             except Exception as e:
                 console.print(f"[red]{p}: {e}[/red]")
     if not all_txns:
-        console.print("[yellow]No transactions found. Add PDFs to data/raw-pdfs/<bank>/<card>/ or run 'ccsa pdf normalize'.[/yellow]")
+        console.print("[yellow]No transactions found. Add PDFs to data/raw-pdfs/<bank>/<card>/ or run 'cardql pdf normalize'.[/yellow]")
         raise SystemExit(1)
     all_txns.sort(key=lambda t: (t.date, t.bank, t.card))
     out_path = output or (paths.exports_dir / "master.csv")
@@ -682,7 +682,7 @@ def export_sqlite(
         _post_export_open_tools(csv_p, db_p)
 
 
-ollama_app = typer.Typer(help="Ollama: local model server + weights for `ccsa query`.")
+ollama_app = typer.Typer(help="Ollama: local model server + weights for `cardql query`.")
 app.add_typer(ollama_app, name="ollama")
 
 
@@ -692,7 +692,7 @@ def ollama_setup_command(
         None,
         "--model",
         "-m",
-        help="Ollama model tag (default: CCSA_OLLAMA_MODEL or qwen3.5:0.8b-q8_0)",
+        help="Ollama model tag (default: CARDQL_OLLAMA_MODEL or qwen3.5:0.8b-q8_0)",
     ),
 ) -> None:
     """Start ``ollama serve`` in the background if needed, then ``ollama pull`` the model."""
@@ -706,8 +706,8 @@ def ollama_setup_command(
 
     paths = get_paths()
     ensure_local_dirs(paths)
-    m = model or os.environ.get("CCSA_OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
-    base = normalize_base_url(os.environ.get("CCSA_OLLAMA_BASE_URL", "http://127.0.0.1:11434"))
+    m = model or os.environ.get("CARDQL_OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+    base = normalize_base_url(os.environ.get("CARDQL_OLLAMA_BASE_URL", "http://127.0.0.1:11434"))
 
     try:
         with console.status("[bold green]Checking Ollama…"):
@@ -725,7 +725,7 @@ def ollama_setup_command(
         console.print(f"[red]{e}[/red]")
         console.print(
             "[dim]Install Ollama: https://ollama.com/download — then re-run "
-            "[bold]ccsa ollama setup[/bold][/dim]"
+            "[bold]cardql ollama setup[/bold][/dim]"
         )
         raise SystemExit(1)
 
@@ -804,7 +804,7 @@ def query_command(
     ensure_local_dirs(paths)
     db = Path(db_path or (paths.exports_dir / "transactions.sqlite")).resolve()
     if not db.is_file():
-        console.print(f"[red]Database not found: {db}[/red] [dim](run `ccsa export master` or `ccsa export sqlite`)[/dim]")
+        console.print(f"[red]Database not found: {db}[/red] [dim](run `cardql export master` or `cardql export sqlite`)[/dim]")
         raise SystemExit(1)
 
     if ensure_server:
@@ -832,7 +832,7 @@ def query_command(
                 console.print(f"[dim]{line}[/dim]")
         except RuntimeError as e:
             console.print(f"[red]{e}[/red]")
-            console.print("[dim]Tip: [bold]ccsa ollama setup[/bold] or install https://ollama.com/download[/dim]")
+            console.print("[dim]Tip: [bold]cardql ollama setup[/bold] or install https://ollama.com/download[/dim]")
             raise SystemExit(1)
 
     console.print(

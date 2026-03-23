@@ -28,7 +28,7 @@ from .config import (
 )
 from .paths import Paths, get_paths
 
-log = logging.getLogger("ccsa.imap")
+log = logging.getLogger("cardql.imap")
 
 STATE_FILE = "imap_fetched.json"
 

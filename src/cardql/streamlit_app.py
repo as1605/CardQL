@@ -7,15 +7,18 @@ from typing import Any
 
 import streamlit as st
 
-from ccsa.config import ensure_local_dirs
-from ccsa.llm_query import DEFAULT_OLLAMA_BASE_URL, DEFAULT_OLLAMA_MODEL, run_natural_language_query
-from ccsa.ollama_setup import (
+from cardql.config import ensure_local_dirs
+from cardql.llm_query import DEFAULT_OLLAMA_BASE_URL, DEFAULT_OLLAMA_MODEL, run_natural_language_query
+from cardql.ollama_setup import (
     ensure_ollama_api_and_tags,
     model_in_tags_payload,
     normalize_base_url,
     pull_ollama_model_if_needed,
 )
-from ccsa.paths import get_paths
+from cardql.paths import get_paths
+
+APP_NAME = "CardQL"
+APP_TAGLINE = "Chat with your credit card statements."
 
 # Display label → Ollama library tag (see https://ollama.com/library )
 OLLAMA_MODEL_CHOICES: list[tuple[str, str]] = [
@@ -43,7 +46,7 @@ def _default_db_path() -> str:
 
 
 def _default_ollama_label() -> str:
-    env = (os.environ.get("CCSA_OLLAMA_MODEL") or DEFAULT_OLLAMA_MODEL or "").strip()
+    env = (os.environ.get("CARDQL_OLLAMA_MODEL") or DEFAULT_OLLAMA_MODEL or "").strip()
     tags = [t for _, t in OLLAMA_MODEL_CHOICES]
     if env in tags:
         return OLLAMA_MODEL_LABELS[tags.index(env)]
@@ -239,11 +242,11 @@ def _ensure_ollama(ensure_server: bool, model_tag: str) -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="CCSA Chat", page_icon="💳", layout="wide")
+    st.set_page_config(page_title=APP_NAME, page_icon="💳", layout="wide")
     _init_state()
 
-    st.title("CCSA Chat")
-    st.caption("Natural-language queries over transactions.sqlite (Ollama + SQLite)")
+    st.title(APP_NAME)
+    st.caption(APP_TAGLINE)
 
     ollama_base = normalize_base_url(DEFAULT_OLLAMA_BASE_URL)
 

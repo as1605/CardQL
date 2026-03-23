@@ -23,7 +23,7 @@ from typing import Any, Callable, NamedTuple
 
 from pydantic import BaseModel, Field
 
-log = logging.getLogger("ccsa.llm_query")
+log = logging.getLogger("cardql.llm_query")
 
 
 def _short_status_line(text: str, max_len: int = 110) -> str:
@@ -35,9 +35,9 @@ def _short_status_line(text: str, max_len: int = 110) -> str:
 # Config
 # ---------------------------------------------------------------------------
 
-DEFAULT_OLLAMA_MODEL = os.environ.get("CCSA_OLLAMA_MODEL", "qwen3.5:0.8b-q8_0")
-DEFAULT_OLLAMA_BASE_URL = os.environ.get("CCSA_OLLAMA_BASE_URL", "http://127.0.0.1:11434")
-DEFAULT_MAX_ITERATIONS = int(os.environ.get("CCSA_QUERY_MAX_ITERATIONS", "5"))
+DEFAULT_OLLAMA_MODEL = os.environ.get("CARDQL_OLLAMA_MODEL", "qwen3.5:0.8b-q8_0")
+DEFAULT_OLLAMA_BASE_URL = os.environ.get("CARDQL_OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+DEFAULT_MAX_ITERATIONS = int(os.environ.get("CARDQL_QUERY_MAX_ITERATIONS", "5"))
 _MAX_ROWS_JSON_PER_STEP = 60_000
 
 TRANSACTIONS_DDL = """\
@@ -438,7 +438,7 @@ def _extract_sql_from_llm_response(text: str) -> str | None:
 # LLM construction
 # ---------------------------------------------------------------------------
 
-_THINK_ENV = "CCSA_OLLAMA_THINK"
+_THINK_ENV = "CARDQL_OLLAMA_THINK"
 
 
 def _ollama_reasoning_param() -> bool | None:
@@ -481,7 +481,7 @@ def _make_llm_sql(
     """LLM for SQL generation (JSON mode, low temperature)."""
     from langchain_ollama import ChatOllama
 
-    use_json = os.environ.get("CCSA_PLANNER_JSON_FORMAT", "1").lower() not in ("0", "false", "no")
+    use_json = os.environ.get("CARDQL_PLANNER_JSON_FORMAT", "1").lower() not in ("0", "false", "no")
     kw: dict[str, Any] = {
         "model": model or DEFAULT_OLLAMA_MODEL,
         "base_url": base_url or DEFAULT_OLLAMA_BASE_URL,

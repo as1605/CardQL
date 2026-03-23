@@ -4,7 +4,7 @@ This project parses credit card statement PDFs into a **normalized JSON format**
 
 ## Flow
 
-1. **Extract text** from the PDF with **pypdf** (`ccsa.pdf.extract_text_from_pdf`).  
+1. **Extract text** from the PDF with **pypdf** (`cardql.pdf.extract_text_from_pdf`).  
    If the PDF is password-protected, decrypt it first with **pikepdf** (same as IMAP fetch does).
 
 2. **Run bank parser(s)** on the extracted text.  
@@ -30,32 +30,32 @@ From the repo root (with `PYTHONPATH=src` or installed package):
 
 ```bash
 # Parse one PDF; print JSON to stdout
-python -m ccsa pdf parse data/raw-pdfs/axis/neo/2025-03_Credit-Card-Statement.pdf
+python -m cardql pdf parse data/raw-pdfs/axis/neo/2025-03_Credit-Card-Statement.pdf
 
 # Normalize all PDFs (try each bank’s parser variants per PDF)
-python -m ccsa pdf normalize
+python -m cardql pdf normalize
 
 # Export single CSV from normalized data
-python -m ccsa export master -o data/exports/master.csv
+python -m cardql export master -o data/exports/master.csv
 ```
 
 Bank/card are inferred from the path (`.../raw-pdfs/<bank>/<card>/...`). Override with `--bank` / `--card` on `pdf parse` if needed.
 
 ## Code layout
 
-- **`src/ccsa/pdf.py`** – `extract_text_from_pdf(data: bytes) -> str` (pypdf). Decryption via `imap._unlock_pdf`.
+- **`src/cardql/pdf.py`** – `extract_text_from_pdf(data: bytes) -> str` (pypdf). Decryption via `imap._unlock_pdf`.
 
-- **`src/ccsa/parsers/schema.py`** – `Transaction` and `Statement` (Pydantic models).
+- **`src/cardql/parsers/schema.py`** – `Transaction` and `Statement` (Pydantic models).
 
-- **`src/ccsa/parsers/banks/`** – One module per bank variant (e.g. `axis_v1.py`, `hdfc_v1.py`). Each exposes `parse_<bank>_v1(text, source_pdf_path=..., bank=..., card=...) -> Statement`.
+- **`src/cardql/parsers/banks/`** – One module per bank variant (e.g. `axis_v1.py`, `hdfc_v1.py`). Each exposes `parse_<bank>_v1(text, source_pdf_path=..., bank=..., card=...) -> Statement`.
 
-- **`src/ccsa/parsers/registry.py`** – `_BANK_PARSERS` (bank_slug → list of (name, parser_func)), `get_parsers_for_bank`, `try_parse_with_bank` (tries all, picks result with most transactions; 0 txns is valid; logs warning only when all variants raise), `get_parser`, `list_parsers`.
+- **`src/cardql/parsers/registry.py`** – `_BANK_PARSERS` (bank_slug → list of (name, parser_func)), `get_parsers_for_bank`, `try_parse_with_bank` (tries all, picks result with most transactions; 0 txns is valid; logs warning only when all variants raise), `get_parser`, `list_parsers`.
 
-- **`src/ccsa/cli.py`** – `ccsa pdf parse`, `ccsa pdf normalize`, `ccsa export master`.
+- **`src/cardql/cli.py`** – `cardql pdf parse`, `cardql pdf normalize`, `cardql export master`.
 
 ## Adding another bank or variant
 
-1. Add `src/ccsa/parsers/banks/<bank>_v1.py` (or `<bank>_v2.py` for a second variant) with a function `parse_<bank>_vN(text, source_pdf_path=None, bank=..., card=...) -> Statement`.
+1. Add `src/cardql/parsers/banks/<bank>_v1.py` (or `<bank>_v2.py` for a second variant) with a function `parse_<bank>_vN(text, source_pdf_path=None, bank=..., card=...) -> Statement`.
 2. Register it in `registry.py`: append to `_BANK_PARSERS["<bank>"]` (or add the key if new bank). Import the new parser from `.banks.<bank>_v1` in `registry.py` and add it to the list.
 
 ## Dependencies

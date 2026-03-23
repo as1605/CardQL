@@ -32,15 +32,15 @@ Build a local-first system that fetches password-protected credit card statement
   - `data/exports/`: CSV/XLSX outputs (future)
 
 ### Modules
-- **`ccsa.config`**: load/validate config, password template resolution, IMAP settings.
-- **`ccsa.imap`**:
+- **`cardql.config`**: load/validate config, password template resolution, IMAP settings.
+- **`cardql.imap`**:
   - IMAP connect, folder selection (All Mail preferred)
   - per-rule search (FROM / SUBJECT), UID-based skip (state + disk reconciliation)
   - parallel fetch (5 workers per rule), decrypt on save, state persist
-- **`ccsa.pdf`** (future): decrypt, extract text/tables.
-- **`ccsa.parsers`** (future): plugin per bank/card, common schema.
-- **`ccsa.export`** (future): master table, CSV/XLSX.
-- **`ccsa.analyze`** (future): monthly spend, rollups.
+- **`cardql.pdf`** (future): decrypt, extract text/tables.
+- **`cardql.parsers`** (future): plugin per bank/card, common schema.
+- **`cardql.export`** (future): master table, CSV/XLSX.
+- **`cardql.analyze`** (future): monthly spend, rollups.
 
 ## Data model (normalized schema)
 
@@ -69,7 +69,7 @@ Build a local-first system that fetches password-protected credit card statement
 ### card_rules.json (local, not committed)
 - One object per bank/card: **`bank`**, **`card`**, **`from_emails`** (list), **`passwords`** (list; first used for PDF decryption).
 - Optional: `subject_contains`, `file_suffix`.
-- Fallback: if `card_rules.json` is missing, ccsa can load `email_rules.json` + `password_rules.json`.
+- Fallback: if `card_rules.json` is missing, cardql can load `email_rules.json` + `password_rules.json`.
 
 ### secrets.json (local, not committed)
 - **`inboxes`**: list of `{ email, passwords }` for IMAP (e.g. Gmail app password — see docs). PDF passwords are set per card in **card_rules.json**.
@@ -77,12 +77,12 @@ Build a local-first system that fetches password-protected credit card statement
 ## CLI design (user workflows)
 
 ### Initialize
-- `ccsa init`
+- `cardql init`
   - create `.local/` and `data/` structure
   - create config templates with examples
 
 ### Fetch statements (IMAP)
-- **`ccsa imap fetch`**
+- **`cardql imap fetch`**
   - Reads **`card_rules.json`** (or fallback `email_rules.json` + `password_rules.json`); each card rule expands to one IMAP search per `from_email`
   - State in `.local/state/imap_fetched.json` keyed by **message UID**
   - On each run: reconcile state with disk (drop UIDs whose file is missing), then skip UIDs already in state
@@ -90,7 +90,7 @@ Build a local-first system that fetches password-protected credit card statement
   - Safe to rerun; interrupted runs can be retried
 
 ### Normalize PDFs
-- `ccsa pdf normalize`
+- `cardql pdf normalize`
   - for each raw PDF:
     - find matching password rule (bank/card)
     - decrypt if needed
@@ -98,9 +98,9 @@ Build a local-first system that fetches password-protected credit card statement
     - write normalized statement JSON to `data/normalized/`
 
 ### Export & analyze
-- `ccsa export master --format csv|xlsx`
+- `cardql export master --format csv|xlsx`
   - merges all normalized transactions into a single table
-- `ccsa analyze monthly`
+- `cardql analyze monthly`
   - outputs monthly totals per bank/card
 
 ## Milestones (implementation order)
@@ -110,7 +110,7 @@ Build a local-first system that fetches password-protected credit card statement
 - `.gitignore` includes `.local/` and `data/`
 
 ### Milestone 1: Local config initialization
-- `ccsa init` creates `.local/` and `data/`; writes template **`card_rules.json`** and **`secrets.json`** when missing
+- `cardql init` creates `.local/` and `data/`; writes template **`card_rules.json`** and **`secrets.json`** when missing
 
 ### Milestone 2: IMAP fetch (done)
 - IMAP connect (Gmail App Password or other provider)
@@ -129,14 +129,14 @@ Build a local-first system that fetches password-protected credit card statement
 
 ### Milestone 5: Natural language querying (local LLM) — **implemented (v1)**
 
-Aligned with **Extension** in `TASK.md`: SQLite export exists (**`ccsa export sqlite`** → **`data/exports/transactions.sqlite`**; `src/ccsa/sqlite_export.py`). **Q&A** uses a **fully local** **Qwen3.5-0.8GB**-class model via **Ollama** (default model env: **`CCSA_OLLAMA_MODEL`**, e.g. `qwen3.5:0.8b-q8_0`).
+Aligned with **Extension** in `TASK.md`: SQLite export exists (**`cardql export sqlite`** → **`data/exports/transactions.sqlite`**; `src/cardql/sqlite_export.py`). **Q&A** uses a **fully local** **Qwen3.5-0.8GB**-class model via **Ollama** (default model env: **`CARDQL_OLLAMA_MODEL`**, e.g. `qwen3.5:0.8b-q8_0`).
 
 **Trust model:** Real transaction fields and query results in prompts are **OK**; truncation only for context. **localhost** Ollama only by default. See **[docs/LLM_QUERY.md](docs/LLM_QUERY.md)**.
 
 **Shipped behavior**
-- **CLI:** **`ccsa query "…"`** (after `pip install -r requirements.txt` + `pip install .`), flags `--db`, `--sql-only`, `--sample-rows`, **`--max-iterations`**, **`--verbose`**, **`--ensure-server`** (default: start **`ollama serve`** in background + **`ollama pull`** if needed).
-- **`ccsa ollama setup`:** same ensure step explicitly (Ollama must be installed separately from https://ollama.com).
-- **Code:** `src/ccsa/llm_query.py` — **LangChain** planner loop (`ChatPromptTemplate | ChatOllama | StrOutputParser`); **Pydantic** `LoopTurnOutput` (`sql` / `clarify` / `answer`); evidence accumulated across turns; **synthesis** pass if max iterations; **Python** `SELECT`-only validation; **read-only** SQLite.
+- **CLI:** **`cardql query "…"`** (after `pip install -r requirements.txt` + `pip install .`), flags `--db`, `--sql-only`, `--sample-rows`, **`--max-iterations`**, **`--verbose`**, **`--ensure-server`** (default: start **`ollama serve`** in background + **`ollama pull`** if needed).
+- **`cardql ollama setup`:** same ensure step explicitly (Ollama must be installed separately from https://ollama.com).
+- **Code:** `src/cardql/llm_query.py` — **LangChain** planner loop (`ChatPromptTemplate | ChatOllama | StrOutputParser`); **Pydantic** `LoopTurnOutput` (`sql` / `clarify` / `answer`); evidence accumulated across turns; **synthesis** pass if max iterations; **Python** `SELECT`-only validation; **read-only** SQLite.
 - **Optional:** LangGraph — not required; loop is a Python `for` + prompt state.
 
 **Non-goals (still)**
@@ -144,5 +144,5 @@ Aligned with **Extension** in `TASK.md`: SQLite export exists (**`ccsa export sq
 
 ## Extensibility checklist (adding a new bank/card)
 - Add an entry in **`card_rules.json`**: `bank`, `card`, `from_emails`, `passwords` (and optional `subject_contains`, `file_suffix`).
-- Run **`ccsa imap fetch`**; PDFs appear under `data/raw-pdfs/<bank>/<card>/`.
-- (Future) Implement a parser under `ccsa.parsers` for normalize/export.
+- Run **`cardql imap fetch`**; PDFs appear under `data/raw-pdfs/<bank>/<card>/`.
+- (Future) Implement a parser under `cardql.parsers` for normalize/export.

@@ -1,6 +1,6 @@
 # Gmail access: IMAP (recommended)
 
-ccsa fetches statement emails via **IMAP**. You use an **email** and **password** in config; for Gmail that password should be an **App Password** (not your normal account password).
+cardql fetches statement emails via **IMAP**. You use an **email** and **password** in config; for Gmail that password should be an **App Password** (not your normal account password).
 
 ---
 
