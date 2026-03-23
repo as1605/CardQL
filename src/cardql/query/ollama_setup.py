@@ -22,7 +22,7 @@ import urllib.request
 from pathlib import Path
 from typing import IO, Any, Callable, cast
 
-from .paths import Paths, get_paths
+from ..paths import Paths, get_paths
 
 log = logging.getLogger("cardql.ollama_setup")
 
@@ -286,7 +286,7 @@ def ensure_ollama_api_and_tags(
         if not start_background:
             raise RuntimeError(
                 f"Ollama API not reachable at {base_url}. "
-                "Start Ollama (desktop app or `ollama serve`) or run: cardql ollama setup"
+                "Start Ollama (desktop app or `ollama serve`) or run: cardql ollama"
             )
         did, msg = start_ollama_serve_background(paths)
         messages.append(msg)

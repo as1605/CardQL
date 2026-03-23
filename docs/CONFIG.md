@@ -63,7 +63,7 @@ The default **TO** filter (when a card rule omits `to_emails`) is the list of al
 ## After editing config
 
 1. Set **`inboxes`** (email + passwords) in **`secrets.json`**. For Gmail, use an app password — see [IMAP_SETUP.md](IMAP_SETUP.md).
-2. Run **`cardql imap fetch`** to sync. Safe to rerun; state is in `.local/state/imap_fetched.json` and reconciled with the data directory.
+2. Run **`cardql fetch`** to sync. Safe to rerun; state is in `.local/state/imap_fetched.json` and reconciled with the data directory.
 
 If the IMAP folder is unavailable, cardql falls back through `[Gmail]/All Mail`, `All Mail`, `INBOX`.
 
@@ -80,12 +80,12 @@ Optional **`.local/config/tags.json`**: a JSON **array** of rules. Each rule has
 
 On first setup, **`cardql init`** (or any command that creates config templates) copies **[sample/tags.json](sample/tags.json)** to **`.local/config/tags.json`** if that file is missing; edit it with your own patterns. If **`docs/sample/tags.json`** is not present (e.g. custom install), a small built-in default list is written instead. Use standard Python `re` syntax (e.g. `\\.` for a literal dot, `\\b` for word boundaries).
 
-After changing tags, regenerate the export: **`cardql export master`** (no PDF re-parse needed).
+After changing tags, regenerate the export: **`cardql parse`** (no PDF re-parse needed if normalized JSON is unchanged; use **`cardql parse --force`** to re-parse PDFs).
 
 ---
 
 ## SQLite (`transactions.sqlite`)
 
-**`cardql run`** and **`cardql export master`** also rebuild **`data/exports/transactions.sqlite`** from **`master.csv`** (table `transactions`; same fields as the CSV plus **`id`**; empty cells → SQL `NULL`). **`date`** is stored as **`YYYY-MM-DD`**. **`date`** and **`amount`** are indexed for filters/ranges. To import only: **`cardql export sqlite`** (`-c` / `--csv`, `-o` / `--output`; defaults: `data/exports/master.csv` → `data/exports/transactions.sqlite`).
+**`cardql parse`** rebuilds **`data/exports/transactions.sqlite`** from **`master.csv`** (table `transactions`; same fields as the CSV plus **`id`**; empty cells → SQL `NULL`). **`date`** is stored as **`YYYY-MM-DD`**. **`date`** and **`amount`** are indexed for filters/ranges.
 
-**`--open` / `-O`** (on **`cardql`**, **`run`**, **`export master`**, or **`export sqlite`**) opens **`master.csv`** with the OS default application, then runs **`sqlite3`** on the export DB in the **same** terminal. The CLI prints the **exact** SQL and sqlite dot-commands it passes to **`sqlite3`** (via **`-cmd`**) before the shell starts; then **`sqlite3`** runs that preview and stays interactive.
+Use **`cardql sql`** for an interactive **`sqlite3`** session on the database.

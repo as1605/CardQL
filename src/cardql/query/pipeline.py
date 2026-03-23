@@ -1,16 +1,4 @@
-"""
-Natural-language Q&A over ``transactions.sqlite`` via LangChain + a local Ollama model.
-
-**Two-phase pipeline (optimised for small 0.5-3 B models):**
-
-1. *SQL generation* — ask the model for a single ``SELECT``, extract it
-   robustly, auto-fix common mistakes (OR-precedence), validate, execute.
-   Retry with error feedback up to ``max_iterations``.
-2. *Answer synthesis* — feed the question + SQL evidence + SQL-computed
-   aggregates to the LLM for a concise natural-language answer.
-
-The LLM is never trusted with arithmetic — all totals come from SQLite.
-"""
+"""Natural-language Q&A over ``transactions.sqlite`` via LangChain + Ollama."""
 
 from __future__ import annotations
 
@@ -21,7 +9,17 @@ import re
 import sqlite3
 from typing import Any, Callable, NamedTuple
 
-from pydantic import BaseModel, Field
+from .json_extract import extract_sql_from_llm_response
+from .schema import (
+    DEFAULT_MAX_ITERATIONS,
+    DEFAULT_OLLAMA_BASE_URL,
+    DEFAULT_OLLAMA_MODEL,
+    QueryResult,
+    QueryStep,
+    TRANSACTIONS_DDL,
+    _MAX_ROWS_JSON_PER_STEP,
+)
+from .sql_safety import fix_or_precedence, validate_select_sql
 
 log = logging.getLogger("cardql.llm_query")
 
@@ -29,160 +27,6 @@ log = logging.getLogger("cardql.llm_query")
 def _short_status_line(text: str, max_len: int = 110) -> str:
     t = " ".join((text or "").split())
     return t if len(t) <= max_len else t[: max_len - 1] + "…"
-
-
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
-
-DEFAULT_OLLAMA_MODEL = os.environ.get("CARDQL_OLLAMA_MODEL", "qwen3.5:0.8b-q8_0")
-DEFAULT_OLLAMA_BASE_URL = os.environ.get("CARDQL_OLLAMA_BASE_URL", "http://127.0.0.1:11434")
-DEFAULT_MAX_ITERATIONS = int(os.environ.get("CARDQL_QUERY_MAX_ITERATIONS", "5"))
-_MAX_ROWS_JSON_PER_STEP = 60_000
-
-TRANSACTIONS_DDL = """\
-CREATE TABLE transactions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT,
-    bank TEXT,
-    card TEXT,
-    description TEXT,
-    amount REAL,
-    currency TEXT,
-    category TEXT,
-    transaction_type TEXT,
-    tags TEXT
-);
-CREATE INDEX idx_transactions_date ON transactions(date);
-CREATE INDEX idx_transactions_amount ON transactions(amount);"""
-
-
-# ---------------------------------------------------------------------------
-# Types
-# ---------------------------------------------------------------------------
-
-
-class QueryStep(BaseModel):
-    """A single executed SQL step (for trace / CLI)."""
-
-    iteration: int
-    sql: str
-    row_count: int = 0
-    error: str | None = None
-    rows_json_truncated: str | None = None
-
-
-class QueryResult(BaseModel):
-    """Final outcome for the CLI."""
-
-    answer: str = ""
-    sql_executed: str | None = None
-    rows: list[dict[str, Any]] = Field(default_factory=list)
-    steps: list[QueryStep] = Field(default_factory=list)
-    clarification: str | None = None
-    planner_raw: str | None = None
-    error: str | None = None
-    stopped_reason: str | None = None
-
-
-# ---------------------------------------------------------------------------
-# SQL safety
-# ---------------------------------------------------------------------------
-
-_FORBIDDEN = (
-    " ATTACH ", " PRAGMA ", " INSERT ", " UPDATE ", " DELETE ",
-    " DROP ", " CREATE ", " ALTER ", " REPLACE ", " VACUUM ", " DETACH ",
-)
-
-
-def validate_select_sql(raw: str) -> tuple[bool, str]:
-    """Allow a single SQLite ``SELECT`` only.  Returns ``(ok, sql_or_error)``."""
-    s = (raw or "").strip()
-    if not s:
-        return False, "Empty SQL"
-    if s.endswith(";"):
-        s = s[:-1].strip()
-    if ";" in s:
-        return False, "Only one SQL statement allowed (no ; in the middle)"
-    if not re.match(r"(?is)\s*select\b", s):
-        return False, "Only SELECT queries are allowed"
-    padded = f" {s.upper()} "
-    for bad in _FORBIDDEN:
-        if bad in padded:
-            return False, f"Forbidden keyword in query: {bad.strip()}"
-    return True, s
-
-
-# ---------------------------------------------------------------------------
-# SQL post-processing: fix OR-precedence
-# ---------------------------------------------------------------------------
-
-
-def _fix_or_precedence(sql: str) -> str:
-    """Wrap ``… LIKE … OR … LIKE …`` in parentheses when followed by ``AND``.
-
-    Small models generate::
-
-        WHERE LOWER(tags) LIKE '%x%' OR LOWER(description) LIKE '%x%' AND date >= '...'
-
-    which applies the date filter only to the second branch (AND binds tighter).
-    This function rewrites it to::
-
-        WHERE (LOWER(tags) LIKE '%x%' OR LOWER(description) LIKE '%x%') AND date >= '...'
-
-    Already-parenthesised groups are left untouched.
-    """
-    upper = sql.upper()
-    where_pos = upper.find(" WHERE ")
-    if where_pos < 0:
-        return sql
-
-    after_where = where_pos + 7
-    # End of the WHERE clause
-    where_end = len(sql)
-    for kw in (" GROUP ", " ORDER ", " LIMIT ", " HAVING "):
-        idx = upper.find(kw, after_where)
-        if 0 <= idx < where_end:
-            where_end = idx
-
-    where_clause = sql[after_where:where_end]
-    wc_upper = where_clause.upper()
-
-    if " OR " not in wc_upper or " AND " not in wc_upper:
-        return sql
-
-    or_idx = wc_upper.find(" OR ")
-
-    # Check paren depth at the OR — if > 0, it's already wrapped
-    depth = 0
-    for i in range(or_idx):
-        if where_clause[i] == "(":
-            depth += 1
-        elif where_clause[i] == ")":
-            depth -= 1
-    if depth > 0:
-        return sql
-
-    # Find the first top-level AND after the OR
-    search_from = or_idx + 4
-    and_idx = -1
-    d = 0
-    while search_from < len(wc_upper) - 4:
-        ch = where_clause[search_from]
-        if ch == "(":
-            d += 1
-        elif ch == ")":
-            d -= 1
-        elif d == 0 and wc_upper[search_from : search_from + 5] == " AND ":
-            and_idx = search_from
-            break
-        search_from += 1
-
-    if and_idx < 0:
-        return sql
-
-    fixed = "(" + where_clause[:and_idx] + ")" + where_clause[and_idx:]
-    return sql[:after_where] + fixed + sql[where_end:]
 
 
 # ---------------------------------------------------------------------------
@@ -339,99 +183,6 @@ def _run_auto_aggregate(db_path: str, base_sql: str) -> str | None:
         return None
     finally:
         conn.close()
-
-
-# ---------------------------------------------------------------------------
-# Robust SQL extraction from LLM output
-# ---------------------------------------------------------------------------
-
-_JSON_FENCE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
-_CODE_FENCE = re.compile(r"```\w*\s*([\s\S]*?)```", re.IGNORECASE)
-_THINK_WRAPPER = re.compile(
-    r"(?:```\s*think\s*[\s\S]*?```|`think[\s\S]*?`)",
-    re.IGNORECASE | re.DOTALL,
-)
-
-
-def extract_json_object(text: str) -> dict[str, Any]:
-    """Extract the first ``{…}`` JSON object from *text* (tolerates wrappers)."""
-    t = (text or "").strip()
-    t = _THINK_WRAPPER.sub("", t).strip()
-    m = _JSON_FENCE.search(t)
-    if m:
-        t = m.group(1).strip()
-    start = t.find("{")
-    if start < 0:
-        raise ValueError("No JSON object found in model output")
-    depth = 0
-    for i in range(start, len(t)):
-        if t[i] == "{":
-            depth += 1
-        elif t[i] == "}":
-            depth -= 1
-            if depth == 0:
-                return _loads_json_lenient(t[start : i + 1])
-    raise ValueError("Unbalanced JSON in model output")
-
-
-def _loads_json_lenient(raw: str) -> dict[str, Any]:
-    """``json.loads`` with repairs for trailing ``;`` / ``,`` and duplicate ``sql`` keys."""
-
-    def _object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-        out: dict[str, Any] = {}
-        for k, v in pairs:
-            if k == "sql" and v in (None, "") and "sql" in out:
-                continue  # keep the non-empty one
-            out[k] = v
-        return out
-
-    for candidate in (raw, re.sub(r";\s*}", "}", raw), re.sub(r",\s*}", "}", raw)):
-        try:
-            return json.loads(candidate, object_pairs_hook=_object_pairs)
-        except json.JSONDecodeError:
-            continue
-    raise json.JSONDecodeError("Could not parse JSON even after repairs", raw, 0)
-
-
-def _extract_sql_from_llm_response(text: str) -> str | None:
-    """Robustly pull a ``SELECT`` out of whatever the model returned.
-
-    Strategies (tried in order):
-    1. Parse as JSON, read ``sql`` key.
-    2. Find SQL inside a markdown code fence.
-    3. Find bare ``SELECT …`` in the text.
-    """
-    t = (text or "").strip()
-    if not t:
-        return None
-    t = _THINK_WRAPPER.sub("", t).strip()
-    if not t:
-        return None
-
-    # Strategy 1: JSON with a "sql" key
-    try:
-        data = extract_json_object(t)
-        for key in ("sql", "query", "SQL"):
-            val = data.get(key)
-            if isinstance(val, str) and val.strip():
-                return val.strip().rstrip(";").strip() or None
-    except (ValueError, json.JSONDecodeError):
-        pass
-
-    # Strategy 2: code fence
-    m = _CODE_FENCE.search(t)
-    if m:
-        inner = m.group(1).strip().rstrip(";").strip()
-        if re.match(r"(?i)\s*SELECT\b", inner):
-            return inner
-
-    # Strategy 3: bare SELECT
-    match = re.search(r"(SELECT\b[\s\S]+?)(?:;|\Z)", t, re.IGNORECASE)
-    if match:
-        sql = match.group(1).strip()
-        return sql or None
-
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -727,7 +478,7 @@ def run_natural_language_query(
         _prog(f"[{iteration}/{cap}] LLM → {_short_status_line(raw, 88)}")
 
         # Extract → fix OR-precedence → validate
-        sql = _extract_sql_from_llm_response(raw)
+        sql = extract_sql_from_llm_response(raw)
         if sql is None:
             _prog(f"[{iteration}/{cap}] No SQL found in response")
             steps.append(QueryStep(
@@ -737,7 +488,7 @@ def run_natural_language_query(
             ))
             continue
 
-        sql = _fix_or_precedence(sql)
+        sql = fix_or_precedence(sql)
         _prog(f"[{iteration}/{cap}] SQL: {_short_status_line(sql, 96)}")
 
         ok, sql_norm = validate_select_sql(sql)
@@ -822,33 +573,3 @@ def run_natural_language_query(
     )
 
 
-# ---------------------------------------------------------------------------
-# Backward-compat aliases (used by tests / old code)
-# ---------------------------------------------------------------------------
-
-# Old planner types — kept so existing tests still import
-from typing import Literal  # noqa: E402
-from pydantic import ValidationError, model_validator  # noqa: E402, F811
-
-
-class LoopTurnOutput(BaseModel):
-    action: Literal["sql", "clarify", "answer"]
-    sql: str | None = None
-    clarification: str | None = None
-    answer: str | None = None
-    rationale: str | None = None
-
-    @model_validator(mode="after")
-    def clear_non_sql_fields_on_sql_action(self) -> LoopTurnOutput:
-        if self.action == "sql":
-            return self.model_copy(update={"answer": None, "clarification": None})
-        return self
-
-
-def parse_loop_turn(text: str) -> LoopTurnOutput:
-    data = extract_json_object(text)
-    return LoopTurnOutput.model_validate(data)
-
-
-def parse_planner_output(text: str) -> LoopTurnOutput:
-    return parse_loop_turn(text)

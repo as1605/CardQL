@@ -1,10 +1,10 @@
 # Parsing transaction data from statement PDFs
 
-This project parses credit card statement PDFs into a **normalized JSON format** (see `PLAN.md` → Data model). Parsers are named by bank and variant (e.g. `hdfc_v1`, `hdfc_v2`). For each PDF, **all** parser variants for that bank are run; the **Statement with the most transactions** is used (hit-and-try). A successful parse with **0 transactions** is valid (e.g. card not used that month). A **warning** is logged only when **every** variant raises (no parser could parse the format); then the PDF is skipped.
+This project parses credit card statement PDFs into a **normalized JSON format** (see `parsers/schema.py` and [ARCHITECTURE.md](ARCHITECTURE.md)). Parsers are named by bank and variant (e.g. `hdfc_v1`, `hdfc_v2`). For each PDF, **all** parser variants for that bank are run; the **Statement with the most transactions** is used (hit-and-try). A successful parse with **0 transactions** is valid (e.g. card not used that month). A **warning** is logged only when **every** variant raises (no parser could parse the format); then the PDF is skipped.
 
 ## Flow
 
-1. **Extract text** from the PDF with **pypdf** (`cardql.pdf.extract_text_from_pdf`).  
+1. **Extract text** from the PDF with **pypdf** (`cardql.ingest.pdf.extract_text_from_pdf`).  
    If the PDF is password-protected, decrypt it first with **pikepdf** (same as IMAP fetch does).
 
 2. **Run bank parser(s)** on the extracted text.  
@@ -29,21 +29,18 @@ This project parses credit card statement PDFs into a **normalized JSON format**
 From the repo root (with `PYTHONPATH=src` or installed package):
 
 ```bash
-# Parse one PDF; print JSON to stdout
-python -m cardql pdf parse data/raw-pdfs/axis/neo/2025-03_Credit-Card-Statement.pdf
+# Normalize all PDFs, merge to master.csv + SQLite, open CSV
+cardql parse
 
-# Normalize all PDFs (try each bank’s parser variants per PDF)
-python -m cardql pdf normalize
-
-# Export single CSV from normalized data
-python -m cardql export master -o data/exports/master.csv
+# One PDF → JSON file only
+cardql parse data/raw-pdfs/axis/neo/2025-03_statement.pdf -o /tmp/out.json
 ```
 
-Bank/card are inferred from the path (`.../raw-pdfs/<bank>/<card>/...`). Override with `--bank` / `--card` on `pdf parse` if needed.
+Bank/card are inferred from the path (`.../raw-pdfs/<bank>/<card>/...`).
 
 ## Code layout
 
-- **`src/cardql/pdf.py`** – `extract_text_from_pdf(data: bytes) -> str` (pypdf). Decryption via `imap._unlock_pdf`.
+- **`src/cardql/ingest/pdf.py`** – `extract_text_from_pdf(data: bytes) -> str` (pypdf). Decryption via `cardql.ingest.imap.unlock_pdf`.
 
 - **`src/cardql/parsers/schema.py`** – `Transaction` and `Statement` (Pydantic models).
 
@@ -51,7 +48,7 @@ Bank/card are inferred from the path (`.../raw-pdfs/<bank>/<card>/...`). Overrid
 
 - **`src/cardql/parsers/registry.py`** – `_BANK_PARSERS` (bank_slug → list of (name, parser_func)), `get_parsers_for_bank`, `try_parse_with_bank` (tries all, picks result with most transactions; 0 txns is valid; logs warning only when all variants raise), `get_parser`, `list_parsers`.
 
-- **`src/cardql/cli.py`** – `cardql pdf parse`, `cardql pdf normalize`, `cardql export master`.
+- **`src/cardql/cli/`** – `cardql parse` (normalize + export + open CSV), `cardql fetch`, etc.
 
 ## Adding another bank or variant
 

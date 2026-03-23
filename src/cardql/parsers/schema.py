@@ -1,4 +1,4 @@
-"""Normalized schema for statements and transactions (see PLAN.md)."""
+"""Normalized schema for statements and transactions (see docs/ARCHITECTURE.md)."""
 
 from __future__ import annotations
 

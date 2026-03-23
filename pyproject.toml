@@ -1,7 +1,7 @@
 [project]
 name = "cardql"
 version = "0.1.0"
-description = "CardQL — chat with your credit card statements. Fetch statements, normalize, export, and query with a local LLM."
+description = "CardQL — chat with your credit card statements. Fetch statements, normalize, export to CSV/SQLite, and query with a local LLM (Streamlit + Ollama)."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [

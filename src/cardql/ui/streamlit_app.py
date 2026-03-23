@@ -8,8 +8,8 @@ from typing import Any
 import streamlit as st
 
 from cardql.config import ensure_local_dirs
-from cardql.llm_query import DEFAULT_OLLAMA_BASE_URL, DEFAULT_OLLAMA_MODEL, run_natural_language_query
-from cardql.ollama_setup import (
+from cardql.query import DEFAULT_OLLAMA_BASE_URL, DEFAULT_OLLAMA_MODEL, run_natural_language_query
+from cardql.query.ollama_setup import (
     ensure_ollama_api_and_tags,
     model_in_tags_payload,
     normalize_base_url,

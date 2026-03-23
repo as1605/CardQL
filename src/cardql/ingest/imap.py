@@ -17,7 +17,7 @@ from threading import Lock
 import pikepdf
 from rich.markup import escape
 
-from .config import (
+from ..config import (
     BankEmailRule,
     LoadedConfig,
     get_imap_credentials,
@@ -26,7 +26,7 @@ from .config import (
     load_config,
     resolve_password,
 )
-from .paths import Paths, get_paths
+from ..paths import Paths, get_paths
 
 log = logging.getLogger("cardql.imap")
 
@@ -173,7 +173,7 @@ def _known_uids(state: dict[str, DownloadRecord]) -> set[str]:
 # PDF helpers
 # ---------------------------------------------------------------------------
 
-def _unlock_pdf(data: bytes, password: str | None) -> tuple[bytes, bool]:
+def unlock_pdf(data: bytes, password: str | None) -> tuple[bytes, bool]:
     """
     Try to open and re-save the PDF (removes encryption if password is correct).
     Returns (bytes_to_write, was_unlocked).
@@ -325,7 +325,7 @@ def _reunlock_from_state(
             continue
         raw = p.read_bytes()
         password = resolve_password(loaded, record.bank, record.card)
-        unlocked_data, did_unlock = _unlock_pdf(raw, password)
+        unlocked_data, did_unlock = unlock_pdf(raw, password)
         if did_unlock and unlocked_data != raw:
             p.write_bytes(unlocked_data)
             state[uid] = DownloadRecord(
@@ -404,7 +404,7 @@ def _fetch_one_uid(
         while out_path.exists():
             n += 1
             out_path = out_dir / f"{month}_{suffix}_{n}.pdf"
-        data_to_write, unlocked = _unlock_pdf(payload, password)
+        data_to_write, unlocked = unlock_pdf(payload, password)
         out_path.write_bytes(data_to_write)
         saved_paths.append(str(out_path))
         rec = DownloadRecord(
