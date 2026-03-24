@@ -1,5 +1,5 @@
 """
-HDFC Bank statement parser (v1). Diners Privilege / similar formats.
+HDFC Bank statement parser (v1). Standard line layout / similar formats.
 
 Parses PDF text:
   Date Transaction Description ... Amount (in Rs.)
@@ -30,7 +30,7 @@ def _ddmmyyyy_to_iso(d: str) -> str:
 def _parse_transaction_line(
     line: str,
     bank: str = "HDFC",
-    card: str = "Diners Privilege",
+    card: str = "Card A",
 ) -> Optional[Transaction]:
     line = line.strip()
     m = re.match(r"^(\d{2}/\d{2}/\d{4})(?:\s+\d{1,2}:\d{2}:\d{2})?\s+(.+)$", line)
@@ -71,7 +71,7 @@ def parse(
     text: str,
     source_pdf_path: Optional[Union[str, Path]] = None,
     bank: str = "HDFC",
-    card: str = "Diners Privilege",
+    card: str = "Card A",
 ) -> Statement:
     start, end = None, None
     m = re.search(r"Statement Date\s*:\s*(\d{2}/\d{2}/\d{4})", text, re.IGNORECASE)

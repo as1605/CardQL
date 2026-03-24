@@ -14,15 +14,15 @@ This project parses credit card statement PDFs into a **normalized JSON format**
 
 ## Parsers (bank_v1, bank_v2, …)
 
-| Bank     | Module       | Format / card |
-|----------|--------------|----------------|
-| Axis     | `axis_v1`    | Neo-style: DD/MM/YYYY description category amount Dr\|Cr |
-| HDFC     | `hdfc_v1`    | Diners (old): DD/MM/YYYY [time] description amount [Cr] |
-| HDFC     | `hdfc_v2`    | Diners (new): DATE \| TIME DESCRIPTION C amount l, credits: + C amount |
-| HSBC     | `hsbc_v1`    | TravelOne-style: DDMMM description amount (concatenated text) |
-| ICICI    | `icici_v1`   | Sapphiro-style: DD/MM/YYYY serial description amount [CR] |
-| IndusInd | `indusind_v1`| EazyDiner: DD/MM/YYYY description category amount DR\|CR |
-| SBI      | `sbi_v1`     | Elite/Cashback: DD MMM YY description amount D\|C\|M (card from path) |
+| Bank     | Module       | Format |
+|----------|--------------|--------|
+| Axis     | `axis_v1`    | DD/MM/YYYY description category amount Dr\|Cr |
+| HDFC     | `hdfc_v1`    | Older layout: DD/MM/YYYY [time] description amount [Cr] |
+| HDFC     | `hdfc_v2`    | Newer table: DATE \| TIME DESCRIPTION C amount l, credits: + C amount |
+| HSBC     | `hsbc_v1`    | DDMMM description amount (concatenated text) |
+| ICICI    | `icici_v1`   | DD/MM/YYYY serial description amount [CR] |
+| IndusInd | `indusind_v1`| DD/MM/YYYY description category amount DR\|CR |
+| SBI      | `sbi_v1`     | DD MMM YY description amount D\|C\|M (card from path) |
 
 ## CLI
 
@@ -33,7 +33,7 @@ From the repo root (with `PYTHONPATH=src` or installed package):
 cardql parse
 
 # One PDF → JSON file only
-cardql parse data/raw-pdfs/axis/neo/2025-03_statement.pdf -o /tmp/out.json
+cardql parse data/raw-pdfs/axis/card-b/2025-03_statement.pdf -o /tmp/out.json
 ```
 
 Bank/card are inferred from the path (`.../raw-pdfs/<bank>/<card>/...`).

@@ -1,5 +1,5 @@
 """
-HDFC Bank statement parser (v2). New Diners Privilege format.
+HDFC Bank statement parser (v2). Newer domestic-transactions table format.
 
 Format: "Domestic Transactions" table with header
   DATE & TIME TRANSACTION DESCRIPTION REWARDS AMOUNT PI
@@ -59,7 +59,7 @@ _V2_DEBIT_TAIL = re.compile(r"^(.+)\s+C\s+([\d,]+\.?\d*)\s+l\s*$")
 def _parse_v2_line(
     line: str,
     bank: str = "HDFC",
-    card: str = "Diners Privilege",
+    card: str = "Card A",
 ) -> Optional[Transaction]:
     line = line.strip()
     m0 = _V2_LINE_PREFIX.match(line)
@@ -99,7 +99,7 @@ def parse(
     text: str,
     source_pdf_path: Optional[Union[str, Path]] = None,
     bank: str = "HDFC",
-    card: str = "Diners Privilege",
+    card: str = "Card A",
 ) -> Statement:
     start, end = None, None
     # Billing period line: "16 Jul, 2025 - 15 Aug, 2025" or "16 Aug, 2025 - 15 Sep, 2025"

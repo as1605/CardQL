@@ -13,7 +13,7 @@ Array of card rules. Each rule is expanded into one IMAP search per `from_email`
 | Field | Required | Description |
 |-------|----------|-------------|
 | `bank` | Yes | Bank name (e.g. `HDFC`, `SBI`). Used in folder `data/raw-pdfs/<bank>/<card>/`. |
-| `card` | No | Card name (e.g. `Diners Privilege`, `NEO`). Omit or use `null` for a single card. |
+| `card` | No | Card name (e.g. `Card A`, `Card B`). Omit or use `null` for a single card. |
 | `from_emails` | Yes | List of sender addresses to search (IMAP FROM). One search per address; all save to same bank/card folder. |
 | `to_emails` | No | List of recipient (inbox) addresses — only fetch emails sent TO one of these. If omitted, uses the list of **`email`** values from **`secrets.json`** → **`inboxes`**. |
 | `passwords` | Yes | List of PDF password templates. First one is used for decrypting statement PDFs. |

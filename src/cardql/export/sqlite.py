@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import csv
+import logging
 import re
 import sqlite3
 from datetime import date
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -101,3 +104,16 @@ def import_master_csv_to_sqlite(csv_path: Path, db_path: Path) -> int:
         return len(rows)
     finally:
         conn.close()
+
+
+def sync_master_csv_to_sqlite(csv_path: Path) -> None:
+    """Rebuild ``transactions.sqlite`` beside ``csv_path`` from master CSV."""
+    csv_path = Path(csv_path).resolve()
+    db_path = csv_path.parent / "transactions.sqlite"
+    try:
+        n = import_master_csv_to_sqlite(csv_path, db_path)
+        logger.info("SQLite: %s rows → %s", n, db_path)
+    except FileNotFoundError as e:
+        logger.warning("%s", e)
+    except OSError as e:
+        logger.warning("SQLite export failed: %s", e)

@@ -22,6 +22,10 @@ This runs inference locally with **Qwen3.5-0.8B**, **Qwen3.5-4B**, or **Qwen3-Co
 
 `Python` · `pypdf` · `SQLite` · `LangChain` · `Ollama` · `Streamlit` · local-first / on-device inference
 
+### Streamlit UI
+
+![CardQL Streamlit chat — natural language queries over your transactions](docs/img/streamlit.png)
+
 ---
 
 ## Quick start

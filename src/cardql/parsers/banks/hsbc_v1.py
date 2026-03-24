@@ -1,5 +1,5 @@
 """
-HSBC Bank statement parser (v1). TravelOne / similar formats.
+HSBC Bank statement parser (v1). DDMMM-style dates / similar formats.
 
 Parses PDF text with DDMMM dates (e.g. 13FEB) and amounts; handles concatenated lines.
 """
@@ -41,7 +41,7 @@ def parse(
     text: str,
     source_pdf_path: Optional[Union[str, Path]] = None,
     bank: str = "HSBC",
-    card: str = "TravelOne",
+    card: str = "Card E",
 ) -> Statement:
     year = _extract_year_from_period(text) or 2026
     start, end = None, None

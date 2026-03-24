@@ -1,5 +1,5 @@
 """
-Axis Bank statement parser (v1). Axis Neo / similar formats.
+Axis Bank statement parser (v1). Columnar DD/MM/YYYY lines with Dr|Cr amounts.
 
 Parses PDF text:
   DATE TRANSACTION DETAILS MERCHANT CATEGORY AMOUNT (Rs.)
@@ -37,7 +37,7 @@ def _ddmmyyyy_to_iso(d: str) -> str:
 def _parse_transaction_line(
     line: str,
     bank: str = "Axis",
-    card: str = "Neo",
+    card: str = "Card B",
 ) -> Optional[Transaction]:
     line = line.strip()
     date_match = re.match(r"^(\d{2}/\d{2}/\d{4})\s+(.+)$", line)
@@ -86,7 +86,7 @@ def parse(
     text: str,
     source_pdf_path: Optional[Union[str, Path]] = None,
     bank: str = "Axis",
-    card: str = "Neo",
+    card: str = "Card B",
 ) -> Statement:
     start, end = _extract_statement_period(text)
     transactions: list[Transaction] = []

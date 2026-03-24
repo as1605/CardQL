@@ -1,5 +1,5 @@
 """
-SBI Card statement parser (v1). Elite / Cashback (same format; card from path).
+SBI Card statement parser (v1). D/C/M suffix amounts (card label from path when set).
 
 Parses PDF text:
   Transaction Details Date Amount ( ` )
@@ -59,7 +59,7 @@ def _extract_statement_period(text: str) -> tuple[Optional[str], Optional[str]]:
 def _parse_transaction_line(
     line: str,
     bank: str = "SBI",
-    card: str = "Elite",
+    card: str = "Card F",
 ) -> Optional[Transaction]:
     line = line.strip()
     m = re.match(r"^(\d{1,2}\s+\w{3}\s+\d{2})\s+(.+)$", line, re.IGNORECASE)
@@ -104,7 +104,7 @@ def parse(
     text: str,
     source_pdf_path: Optional[Union[str, Path]] = None,
     bank: str = "SBI",
-    card: str = "Elite",
+    card: str = "Card F",
 ) -> Statement:
     start, end = _extract_statement_period(text)
     transactions: list[Transaction] = []

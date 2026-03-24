@@ -1,5 +1,5 @@
 """
-ICICI Bank statement parser (v1). Sapphiro / similar formats.
+ICICI Bank statement parser (v1). Serial-numbered transaction lines / similar formats.
 
 Parses PDF text:
   Date SerNo. Transaction Details ... Amount (in`)
@@ -52,7 +52,7 @@ def _extract_statement_period(text: str) -> tuple[Optional[str], Optional[str]]:
 def _parse_transaction_line(
     line: str,
     bank: str = "ICICI",
-    card: str = "Sapphiro",
+    card: str = "Card D",
 ) -> Optional[Transaction]:
     line = line.strip()
     if not re.match(r"^\d{2}/\d{2}/\d{4}\s+\d+", line) or len(line.split()) < 4:
@@ -88,7 +88,7 @@ def parse(
     text: str,
     source_pdf_path: Optional[Union[str, Path]] = None,
     bank: str = "ICICI",
-    card: str = "Sapphiro",
+    card: str = "Card D",
 ) -> Statement:
     start, end = _extract_statement_period(text)
     transactions: list[Transaction] = []

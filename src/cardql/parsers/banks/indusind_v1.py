@@ -1,9 +1,9 @@
 """
-IndusInd Bank statement parser (v1). EazyDiner Platinum / similar formats.
+IndusInd Bank statement parser (v1). Standard statement layout / similar formats.
 
 Parses PDF text:
   Date Transaction Details Merchant Category Reward Points Amount (in )
-  17/01/2026 EAZYDINER GURGAON IN RESTAURANTS 21 1,043.00 DR
+  17/01/2026 DINING OUTLET GURGAON IN RESTAURANTS 21 1,043.00 DR
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ def _extract_statement_period(text: str) -> tuple[Optional[str], Optional[str]]:
 def _parse_transaction_line(
     line: str,
     bank: str = "IndusInd",
-    card: str = "EazyDiner",
+    card: str = "Card C",
 ) -> Optional[Transaction]:
     line = line.strip()
     m = re.match(r"^(\d{2}/\d{2}/\d{4})\s+(.+)$", line)
@@ -73,7 +73,7 @@ def parse(
     text: str,
     source_pdf_path: Optional[Union[str, Path]] = None,
     bank: str = "IndusInd",
-    card: str = "EazyDiner",
+    card: str = "Card C",
 ) -> Statement:
     start, end = _extract_statement_period(text)
     transactions: list[Transaction] = []
