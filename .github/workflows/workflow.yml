@@ -1,0 +1,32 @@
+# Publish to PyPI when a GitHub Release is published.
+# Configure trusted publishing: https://docs.pypi.org/trusted-publishers/
+# PyPI → Your project → Publishing → Add a new pending publisher (GitHub).
+
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build
+        run: python -m pip install --upgrade pip build
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
