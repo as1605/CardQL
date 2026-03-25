@@ -1,6 +1,6 @@
 [project]
 name = "cardql"
-version = "0.1.0"
+version = "0.1.1"
 description = "CardQL — chat with your credit card statements. Fetch statements, normalize, export to CSV/SQLite, and query with a local LLM (Streamlit + Ollama)."
 readme = "README.md"
 license = "Apache-2.0"
