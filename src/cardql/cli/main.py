@@ -17,6 +17,7 @@ from .helpers import (
     launch_sqlite3_repl,
     month_from_stem,
     months_in_range,
+    open_file_default_app,
     streamlit_app_path,
 )
 from . import pipeline
@@ -48,7 +49,9 @@ def main(
 
 
 @app.command()
-def init() -> None:
+def init(
+    no_open: bool = typer.Option(False, "--no-open", help="Do not open card_rules.json and secrets.json"),
+) -> None:
     """Initialize local (gitignored) config and data folders."""
     paths = ensure_local_dirs()
     write_config_templates(paths)
@@ -66,6 +69,11 @@ def init() -> None:
     console.print(
         "[dim]Chat:[/dim] [bold]pip install -r requirements.txt[/bold] then [bold]cardql ollama[/bold] and [bold]cardql ui[/bold]."
     )
+    if not no_open:
+        card_rules = paths.local_config_dir / "card_rules.json"
+        secrets = paths.local_config_dir / "secrets.json"
+        open_file_default_app(card_rules)
+        open_file_default_app(secrets)
 
 
 @app.command()
