@@ -30,27 +30,18 @@ This runs inference locally with **Qwen3.5-0.8B**, **Qwen3.5-4B**, or **Qwen3-Co
 
 ## Quick start
 
-Install (from the repo root):
-
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-pip install .                 # installs `cardql` on PATH (same as pip3 install .)
+pip install cardql
+cardql init
 ```
 
-After install, **`cardql`** behaves like other console tools (`streamlit`, `jupyter`) for that environment.
-
-**One shot** — create dirs and templates, fetch (if rules exist), normalize, export CSV + SQLite, open the CSV, ensure **Ollama**, launch **Streamlit**:
+Edit the templates under **`.local/config/`** — at least **`secrets.json`** and **`card_rules.json`**. See [docs/CONFIG.md](docs/CONFIG.md) for the full reference (mailbox setup: [docs/IMAP_SETUP.md](docs/IMAP_SETUP.md)).
 
 ```bash
-# Edit .local/config/secrets.json and .local/config/card_rules.json first
 cardql
 ```
 
-Flags on the default command: `--force`, `-o` (master CSV path), `--no-open`, `--no-fetch`, `--skip-ollama`, `--no-ui`.
-
-Without `pip install .`, **`./run`** uses `python -m cardql` and prefers `.venv` if present.
+That default command fetches (if IMAP is configured), normalizes PDFs, writes **master CSV** and **SQLite**, and opens the **Streamlit** UI (after **Ollama** setup). Flags include `--force`, `-o` (master CSV path), `--no-open`, `--no-fetch`, `--skip-ollama`, and `--no-ui`.
 
 For a slower walkthrough, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
